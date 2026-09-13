@@ -564,7 +564,16 @@ export class Chats extends EventEmitter {
   }
 }
 export function friendly(e: any) {
-  const s = String(e?.message || 'Unbekannter Codex-Fehler');
+  let s = String(e?.message || 'Unbekannter Codex-Fehler');
+  // Show the requester a useful startup diagnosis, but never write it to
+  // standard logs and remove credential-shaped fragments before persistence.
+  s =
+    'Codex-Diagnose: ' +
+    s
+      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [entfernt]')
+      .replace(/(access[_-]?token|refresh[_-]?token|password)\s*[=:]\s*[^\s,;]+/gi, '$1=[entfernt]')
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 280);
   if (
     /429|quota|usage.?limit|rate.?limit|limit (?:reached|exceeded)|Kontingent.*ausgeschöpft/i.test(
       s,
