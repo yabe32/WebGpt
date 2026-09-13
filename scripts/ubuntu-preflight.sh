@@ -12,7 +12,7 @@ docker compose version 2>/dev/null || echo "FEHLT: Docker Compose Plugin"
 
 echo
 echo "== Belegte Ports =="
-for port in 80 443 3001; do
+for port in 80 443 3001 3101; do
   echo "Port ${port}:"
   if ss -ltn "sport = :${port}" | grep -q LISTEN; then
     ss -ltn "sport = :${port}"

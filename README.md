@@ -199,6 +199,22 @@ bash scripts/ubuntu-preflight.sh chat.deine-domain.de
 
 Das Skript aendert nichts. Es zeigt Ports, Docker/Git, UFW und DNS.
 
+Wenn bereits ein zentraler Caddy auf dem Host laeuft, verwende die Overlay-Datei statt einer zweiten Caddy-Instanz:
+
+```bash
+docker compose -f docker-compose.yml -f compose.external-caddy.yml up -d --build
+```
+
+Dann im vorhandenen Caddyfile den Reverse Proxy eintragen und Caddy neu laden:
+
+```caddyfile
+chat.deine-domain.de {
+    reverse_proxy 127.0.0.1:3101
+}
+```
+
+`APP_HOST_PORT` kann gesetzt werden, falls 3101 lokal bereits belegt ist. Dieser Port bleibt an `127.0.0.1` gebunden und wird nie in der Firewall freigegeben.
+
 ## 9. Tests und Fehlerbehebung
 
 ```powershell
