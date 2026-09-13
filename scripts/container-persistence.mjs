@@ -1,0 +1,4 @@
+// Run over stdin inside the localhost-only acceptance container. No credentials are read.
+import path from 'node:path';import {pathToFileURL} from 'node:url';import fs from 'node:fs';
+const {configuration}=await import(pathToFileURL(path.resolve('dist/server/config.js')));const {Store}=await import(pathToFileURL(path.resolve('dist/server/db.js')));const cfg=configuration(),s=new Store(cfg),marker=path.join(cfg.data,'container-persistence-test.json');
+if(!fs.existsSync(marker)){const c=s.create('Container-Persistenzprüfung');fs.writeFileSync(marker,JSON.stringify({id:c.id}));console.log('Testdatensatz angelegt');}else{const {id}=JSON.parse(fs.readFileSync(marker,'utf8'));if(!s.chat(id))throw Error('Persistenzprüfung fehlgeschlagen');s.run('DELETE FROM chats WHERE id=?',id);fs.unlinkSync(marker);console.log('BESTANDEN: Datensatz nach Containerneustart erhalten; Testdatensatz entfernt');}s.close();

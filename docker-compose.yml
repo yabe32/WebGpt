@@ -1,0 +1,43 @@
+name: privatraum
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      BASE_URL: https://${DOMAIN:?Domain in .env setzen}
+      TRUST_PROXY: 'true'
+      MODEL: ${MODEL:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+      TURN_IDLE_TIMEOUT_SECONDS: ${TURN_IDLE_TIMEOUT_SECONDS:-180}
+    volumes:
+      - app_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+    expose: ['3001']
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Domain in .env setzen}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME-E-Mail in .env setzen}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:

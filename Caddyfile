@@ -1,0 +1,13 @@
+{
+    email {$ACME_EMAIL}
+}
+{$DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 20MB
+    }
+    reverse_proxy app:3001 {
+        flush_interval -1
+    }
+    # No access log: private paths and queries are not logged by default.
+}

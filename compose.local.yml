@@ -1,0 +1,19 @@
+name: privatraum-local
+services:
+  app:
+    build: .
+    init: true
+    environment:
+      BASE_URL: http://localhost:8080
+      TRUST_PROXY: 'false'
+      TURN_IDLE_TIMEOUT_SECONDS: '180'
+    ports: ['127.0.0.1:8080:3001']
+    volumes: ['local_data:/data']
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=256m']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+volumes:
+  local_data:

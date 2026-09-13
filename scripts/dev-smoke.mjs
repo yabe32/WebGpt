@@ -1,0 +1,7 @@
+// Real Windows -> WSL source-sync/HMR/restart check. Restores source bytes in finally.
+import fs from 'node:fs';import {execFileSync} from 'node:child_process';import {chromium} from '@playwright/test';
+const cfg=JSON.parse(fs.readFileSync('.runtime/wsl.json','utf8'));
+const pid=()=>execFileSync('wsl.exe',['-d',cfg.distro,'-u',cfg.user,'--exec','pgrep','-af','server/index.ts'],{encoding:'utf8'}).split('\n').find(l=>l.includes('loader.mjs'))?.split(' ')[0];
+const css=fs.readFileSync('src/style.css','utf8'),server=fs.readFileSync('server/index.ts','utf8');const browser=await chromium.launch({channel:'msedge'}),page=await browser.newPage();
+try{await page.goto('http://localhost:5173');fs.appendFileSync('src/style.css','\n:root{--privatraum-hmr-proof:confirmed}\n');await page.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--privatraum-hmr-proof').trim()==='confirmed',{},{timeout:20000});console.log('BESTANDEN: Windows-Änderung erscheint über WSL/Vite ohne Neuladen im Browser');const before=pid();fs.appendFileSync('server/index.ts','\n// Automated restart acceptance probe.\n');const until=Date.now()+20000;while(Date.now()<until){await new Promise(r=>setTimeout(r,500));const after=pid();if(after&&after!==before){console.log('BESTANDEN: Backend wurde nach Windows-Quelländerung automatisch neu gestartet');break;}if(Date.now()>until-600)throw Error('Backend-Neustart nicht bestätigt');}}
+finally{fs.writeFileSync('src/style.css',css);fs.writeFileSync('server/index.ts',server);await browser.close();}
