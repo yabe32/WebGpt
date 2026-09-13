@@ -16,7 +16,9 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=256m
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    # Codex uses bwrap for its own workspace sandbox. Docker's default seccomp
+    # profile blocks the required user namespace on many hosts.
+    security_opt: [no-new-privileges:true, seccomp=unconfined]
     pids_limit: 256
     mem_limit: 2g
     expose: ['3001']

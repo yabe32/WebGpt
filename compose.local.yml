@@ -12,7 +12,7 @@ services:
     read_only: true
     tmpfs: ['/tmp:rw,noexec,nosuid,size=256m']
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    security_opt: [no-new-privileges:true, seccomp=unconfined]
     pids_limit: 256
     mem_limit: 2g
 volumes:
