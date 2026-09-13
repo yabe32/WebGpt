@@ -248,3 +248,4 @@ Diese echte Abnahme verbraucht enthaltenes Codex-Kontingent. Sie prüft Textdelt
 - **Kein Offline-Modus:** Nur die Darstellungspräferenz liegt in LocalStorage; keine Chatinhalte, Tokens oder Anhänge. Kein Service Worker/PWA-Cache.
 
 Architektur und Protokollquellen: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Abnahmestand: [docs/TESTING.md](docs/TESTING.md).
+"# WebGpt" 
