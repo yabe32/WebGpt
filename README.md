@@ -202,6 +202,7 @@ Das Skript aendert nichts. Es zeigt Ports, Docker/Git, UFW und DNS.
 Wenn bereits ein zentraler Caddy auf dem Host laeuft, verwende die Overlay-Datei statt einer zweiten Caddy-Instanz:
 
 ```bash
+cp .env.production.example .env
 docker compose -f docker-compose.yml -f compose.external-caddy.yml up -d --build
 ```
 
