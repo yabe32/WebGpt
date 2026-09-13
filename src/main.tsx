@@ -178,7 +178,7 @@ function Login({ configured, done }: { configured: boolean; done: () => void }) 
   );
 }
 function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => void; onLogout: () => void; isAdmin: boolean; openAdmin: () => void }) {
-  const [status, setStatus] = useState<any>(),
+  const [status, setStatus] = useState<any>(null),
     [sessions, setSessions] = useState<any[]>([]),
     [login, setLogin] = useState<any>(),
     [error, setError] = useState(''),
@@ -219,7 +219,7 @@ function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => voi
         <h3>ChatGPT-Verbindung</h3>
         <p className="status-line">
           <i className={status?.account ? 'dot good' : 'dot'} />
-          {status?.account
+          {status === null ? 'Verbindungsstatus wird geprüft' : status?.account
             ? `Mit ChatGPT verbunden · ${status.account.planType || 'Konto'}`
             : status?.connected
               ? 'Anmeldung erforderlich'
@@ -229,7 +229,7 @@ function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => voi
           Dein Plus-Konto wird ausschließlich durch Codex genutzt. Keine kostenpflichtige
           API-Alternative.
         </p>
-        {!status?.connected ? (
+        {status === null ? null : !status.connected ? (
           <button
             className="secondary"
             disabled={busy}

@@ -216,6 +216,8 @@ chat.deine-domain.de {
 
 `APP_HOST_PORT` kann gesetzt werden, falls 3101 lokal bereits belegt ist. Dieser Port bleibt an `127.0.0.1` gebunden und wird nie in der Firewall freigegeben.
 
+Das Produktionsimage enthält Git als lokale Codex-Abhängigkeit für die Initialisierung der Gesprächs-Arbeitsverzeichnisse. Es erhält dadurch weder einen GitHub-Zugang noch einen Zugriff auf Host-Dateien.
+
 ## 9. Tests und Fehlerbehebung
 
 ```powershell
