@@ -74,6 +74,13 @@ export class Codex extends EventEmitter implements Rpc {
       'APPDATA',
     ])
       if (process.env[key]) env[key] = process.env[key];
+    // The production image has a read-only root filesystem. Keep every Codex
+    // runtime file below the private persistent data directory instead of
+    // inheriting /home/node, which is read-only in that deployment.
+    fs.mkdirSync(path.join(this.cfg.codexHome, 'cache'), { recursive: true, mode: 0o700 });
+    env.HOME = this.cfg.codexHome;
+    env.XDG_CONFIG_HOME = this.cfg.codexHome;
+    env.XDG_CACHE_HOME = path.join(this.cfg.codexHome, 'cache');
     env.CODEX_HOME = this.cfg.codexHome;
     this.child = spawn(executable, ['app-server', '--listen', 'stdio://'], {
       cwd: this.cfg.work,
