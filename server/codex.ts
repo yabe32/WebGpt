@@ -37,7 +37,7 @@ export class Codex extends EventEmitter implements Rpc {
     // Dedicated home: never inherit personal MCP servers, plugins, API keys or CLI credentials.
     fs.writeFileSync(
       path.join(this.cfg.codexHome, 'config.toml'),
-      `forced_login_method = "chatgpt"\ncli_auth_credentials_store = "file"\nweb_search = "${this.cfg.webSearch}"\napproval_policy = "on-request"\ndefault_permissions = "chat"\n[permissions.chat.filesystem]\n":minimal" = "read"\n":workspace_roots" = "write"\n[permissions.chat.network]\nenabled = false\n[features]\nimage_generation = true\nshell_tool = false\nunified_exec = false\napps = false\nplugins = false\nmulti_agent = false\nbrowser_use = false\ncomputer_use = false\nmemories = false\nhooks = false\nunbounded_connection_retries = false\n`,
+      `forced_login_method = "chatgpt"\ncli_auth_credentials_store = "file"\nweb_search = "${this.cfg.webSearch}"\nsandbox_mode = "${this.cfg.codexSandboxMode}"\napproval_policy = "on-request"\ndefault_permissions = "chat"\n[permissions.chat.filesystem]\n":minimal" = "read"\n":workspace_roots" = "write"\n[permissions.chat.network]\nenabled = false\n[features]\nimage_generation = true\nshell_tool = false\nunified_exec = false\napps = false\nplugins = false\nmulti_agent = false\nbrowser_use = false\ncomputer_use = false\nmemories = false\nhooks = false\nunbounded_connection_retries = false\n`,
       { mode: 0o600 },
     );
     const require = createRequire(import.meta.url);

@@ -58,6 +58,7 @@ export class Chats extends EventEmitter {
     return {
       cwd,
       approvalPolicy: 'on-request',
+      sandbox: this.cfg.codexSandboxMode,
       model: this.store.setting('global_model') || this.cfg.model,
       developerInstructions: /*
         'Du bist ein privater deutschsprachiger Chat-Assistent. Antworte direkt und verständlich. Nutze das native Bildwerkzeug für angefragte Bilder und Bearbeitungen. Shell, Websuche, Plugins und externe Dienste sind nicht verfügbar. Erfinde keine erzeugten Bilder. Speichere Bilder ausschließlich im Arbeitsverzeichnis dieses Gesprächs. Keine API-Schlüssel oder kostenpflichtigen Alternativen verwenden.',

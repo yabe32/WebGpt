@@ -6,9 +6,12 @@ export function configuration(env: NodeJS.ProcessEnv = process.env) {
   const baseUrl = new URL(env.BASE_URL || 'http://localhost:5173');
   const production = env.NODE_ENV === 'production';
   const webSearch = env.WEB_SEARCH || 'live';
+  const codexSandboxMode = env.CODEX_SANDBOX_MODE || 'workspace-write';
   const turnIdleSeconds = Number(env.TURN_IDLE_TIMEOUT_SECONDS || 180);
   if (!['disabled', 'cached', 'indexed', 'live'].includes(webSearch))
     throw Error('WEB_SEARCH muss disabled, cached, indexed oder live sein.');
+  if (!['workspace-write', 'danger-full-access'].includes(codexSandboxMode))
+    throw Error('CODEX_SANDBOX_MODE muss workspace-write oder danger-full-access sein.');
   if (!Number.isFinite(turnIdleSeconds) || turnIdleSeconds < 30 || turnIdleSeconds > 1800)
     throw Error('TURN_IDLE_TIMEOUT_SECONDS muss zwischen 30 und 1800 liegen.');
   if (
@@ -29,6 +32,7 @@ export function configuration(env: NodeJS.ProcessEnv = process.env) {
     turnIdleMs: turnIdleSeconds * 1000,
     model: env.MODEL || undefined,
     webSearch: webSearch as 'disabled' | 'cached' | 'indexed' | 'live',
+    codexSandboxMode: codexSandboxMode as 'workspace-write' | 'danger-full-access',
     codexHome: path.join(data, 'codex'),
     work: path.join(data, 'work'),
     files: path.join(data, 'files'),
