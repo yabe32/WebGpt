@@ -298,12 +298,45 @@ export function createApp(cfg: Config, rpc: Rpc) {
     await rpc.request('account/logout');
     res.json({ ok: true });
   });
+  app.get('/api/projects', (req, res) => res.json(store.all(
+    `SELECT p.*,COUNT(c.id) chats FROM projects p LEFT JOIN chats c ON c.project_id=p.id AND c.archived_at IS NULL
+     WHERE p.user_id=? AND p.archived_at IS NULL GROUP BY p.id ORDER BY p.updated_at DESC`, res.locals.session.user_id,
+  )));
+  app.post('/api/projects', (req, res) => {
+    const v = z.object({ name: z.string().trim().min(1).max(100), instructions: z.string().max(8000).default('') }).parse(req.body);
+    const now = Date.now(), projectId = randomUUID();
+    store.run('INSERT INTO projects(id,user_id,name,instructions,created_at,updated_at) VALUES (?,?,?,?,?,?)', projectId, res.locals.session.user_id, v.name, v.instructions, now, now);
+    store.audit(res.locals.session.user_id, 'project.created', null, { projectId, name: v.name });
+    res.status(201).json(store.get('SELECT * FROM projects WHERE id=?', projectId));
+  });
+  app.patch('/api/projects/:id', (req, res) => {
+    const projectId = id.parse(req.params.id), v = z.object({ name: z.string().trim().min(1).max(100).optional(), instructions: z.string().max(8000).optional(), archived: z.boolean().optional() }).parse(req.body);
+    if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+    if (v.name !== undefined) store.run('UPDATE projects SET name=?,updated_at=? WHERE id=?', v.name, Date.now(), projectId);
+    if (v.instructions !== undefined) store.run('UPDATE projects SET instructions=?,updated_at=? WHERE id=?', v.instructions, Date.now(), projectId);
+    if (v.archived !== undefined) store.run('UPDATE projects SET archived_at=?,updated_at=? WHERE id=?', v.archived ? Date.now() : null, Date.now(), projectId);
+    store.audit(res.locals.session.user_id, 'project.updated', null, { projectId });
+    res.json({ ok: true });
+  });
+  app.get('/api/tags', (req, res) => res.json(store.all('SELECT * FROM tags WHERE user_id=? ORDER BY name COLLATE NOCASE', res.locals.session.user_id)));
+  app.post('/api/tags', (req, res) => {
+    const name = z.object({ name: z.string().trim().min(1).max(40) }).parse(req.body).name;
+    const existing = store.get('SELECT * FROM tags WHERE user_id=? AND name=?', res.locals.session.user_id, name);
+    if (existing) return res.json(existing);
+    const tag = { id: randomUUID(), user_id: res.locals.session.user_id, name, created_at: Date.now() };
+    store.run('INSERT INTO tags VALUES (?,?,?,?)', tag.id, tag.user_id, tag.name, tag.created_at);
+    res.status(201).json(tag);
+  });
   app.get('/api/chats', (req, res) => {
     const q = String(req.query.q || '').slice(0, 200);
+    const archived = req.query.archived === 'true', projectId = req.query.projectId ? id.parse(req.query.projectId) : null;
     res.json(
       store.all(
-        'SELECT DISTINCT c.* FROM chats c LEFT JOIN messages m ON m.chat_id=c.id WHERE c.user_id=? AND (c.title LIKE ? OR m.text LIKE ?) ORDER BY c.updated_at DESC',
+        `SELECT DISTINCT c.*,p.name project_name,COALESCE((SELECT json_group_array(t.name) FROM chat_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.chat_id=c.id),'[]') tags
+         FROM chats c LEFT JOIN messages m ON m.chat_id=c.id LEFT JOIN projects p ON p.id=c.project_id
+         WHERE c.user_id=? AND c.archived_at IS ${archived ? 'NOT ' : ''}NULL ${projectId ? 'AND c.project_id=?' : ''} AND (c.title LIKE ? OR m.text LIKE ?) ORDER BY c.updated_at DESC`,
         res.locals.session.user_id,
+        ...(projectId ? [projectId] : []),
         '%' + q + '%',
         '%' + q + '%',
       ),
@@ -314,8 +347,19 @@ export function createApp(cfg: Config, rpc: Rpc) {
   app.patch('/api/chats/:id', (req, res) => {
     const cid = id.parse(req.params.id);
     store.snapshot(cid, res.locals.session.user_id);
-    const { title } = z.object({ title: z.string().trim().min(1).max(120) }).parse(req.body);
-    store.run('UPDATE chats SET title=? WHERE id=?', title, cid);
+    const v = z.object({ title: z.string().trim().min(1).max(120).optional(), projectId: id.nullable().optional(), archived: z.boolean().optional(), tagIds: z.array(id).max(30).optional() }).parse(req.body);
+    if (v.title !== undefined) store.run('UPDATE chats SET title=? WHERE id=?', v.title, cid);
+    if (v.projectId !== undefined) {
+      if (v.projectId && !store.get('SELECT id FROM projects WHERE id=? AND user_id=? AND archived_at IS NULL', v.projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+      store.run('UPDATE chats SET project_id=? WHERE id=?', v.projectId, cid);
+    }
+    if (v.archived !== undefined) store.run('UPDATE chats SET archived_at=? WHERE id=?', v.archived ? Date.now() : null, cid);
+    if (v.tagIds) {
+      const owned = store.all<{ id: string }>(`SELECT id FROM tags WHERE user_id=? AND id IN (${v.tagIds.map(() => '?').join(',')})`, res.locals.session.user_id, ...v.tagIds);
+      if (owned.length !== v.tagIds.length) throw Object.assign(Error('Tag nicht gefunden.'), { status: 404 });
+      store.db.transaction(() => { store.run('DELETE FROM chat_tags WHERE chat_id=?', cid); for (const tagId of v.tagIds!) store.run('INSERT INTO chat_tags(chat_id,tag_id) VALUES (?,?)', cid, tagId); })();
+    }
+    store.run('UPDATE chats SET updated_at=? WHERE id=?', Date.now(), cid);
     chats.publish(cid);
     res.json({ ok: true });
   });

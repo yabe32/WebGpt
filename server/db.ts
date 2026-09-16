@@ -124,6 +124,30 @@ CREATE TABLE token_usage_events(
 CREATE INDEX token_usage_events_user_time ON token_usage_events(user_id,observed_at DESC);
 CREATE INDEX token_usage_events_turn_time ON token_usage_events(turn_id,observed_at);
 `,
+  `
+ALTER TABLE users ADD COLUMN image_limit_per_hour INTEGER NOT NULL DEFAULT 0 CHECK(image_limit_per_hour BETWEEN 0 AND 100000);
+ALTER TABLE users ADD COLUMN web_search_limit_per_hour INTEGER NOT NULL DEFAULT 0 CHECK(web_search_limit_per_hour BETWEEN 0 AND 100000);
+ALTER TABLE users ADD COLUMN upload_limit_mb INTEGER NOT NULL DEFAULT 0 CHECK(upload_limit_mb BETWEEN 0 AND 1024);
+ALTER TABLE users ADD COLUMN parallel_turn_limit INTEGER NOT NULL DEFAULT 1 CHECK(parallel_turn_limit BETWEEN 1 AND 100);
+CREATE TABLE projects(
+  id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, instructions TEXT NOT NULL DEFAULT '', archived_at INTEGER,
+  created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
+);
+CREATE INDEX projects_user_updated ON projects(user_id,updated_at DESC);
+ALTER TABLE chats ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+ALTER TABLE chats ADD COLUMN archived_at INTEGER;
+CREATE INDEX chats_project_updated ON chats(project_id,updated_at DESC);
+CREATE TABLE tags(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(user_id,name));
+CREATE TABLE chat_tags(chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,PRIMARY KEY(chat_id,tag_id));
+CREATE TABLE chat_topics(id TEXT PRIMARY KEY,chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,name TEXT NOT NULL,source TEXT NOT NULL CHECK(source IN ('manual','suggested')),created_at INTEGER NOT NULL,UNIQUE(chat_id,name));
+CREATE TABLE audit_events(id INTEGER PRIMARY KEY AUTOINCREMENT,actor_user_id TEXT REFERENCES users(id),target_user_id TEXT REFERENCES users(id),kind TEXT NOT NULL,details TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL);
+CREATE INDEX audit_events_time ON audit_events(created_at DESC);
+CREATE INDEX audit_events_actor_time ON audit_events(actor_user_id,created_at DESC);
+ALTER TABLE artifacts ADD COLUMN original_name TEXT;
+ALTER TABLE artifacts ADD COLUMN parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL;
+ALTER TABLE artifacts ADD COLUMN chat_id TEXT REFERENCES chats(id) ON DELETE SET NULL;
+`,
 ];
 export class Store {
   db: Database.Database;
@@ -156,6 +180,9 @@ export class Store {
   setSetting(key: string, value: string | null) {
     if (value === null) this.run('DELETE FROM settings WHERE key=?', key);
     else this.run('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', key, value);
+  }
+  audit(actorUserId: string | null, kind: string, targetUserId: string | null = null, details: Record<string, unknown> = {}) {
+    this.run('INSERT INTO audit_events(actor_user_id,target_user_id,kind,details,created_at) VALUES (?,?,?,?,?)', actorUserId, targetUserId, kind, JSON.stringify(details), Date.now());
   }
   chat(id: string, userId?: string) {
     return userId
