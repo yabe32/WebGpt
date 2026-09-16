@@ -925,6 +925,8 @@ function App() {
           {selected && (
             <div className="header-actions">
               <a className="icon" aria-label="Chat als Markdown herunterladen" href={'/api/chats/' + selected + '/export/markdown'} download><Download size={17} /></a>
+              <a className="icon" aria-label="Chat als PDF herunterladen" href={'/api/chats/' + selected + '/export/pdf'} download>PDF</a>
+              <a className="icon" aria-label="Chat und Bilder als ZIP herunterladen" href={'/api/chats/' + selected + '/export/zip'} download>ZIP</a>
               <button
                 className="icon"
                 aria-label="Gespräch umbenennen"

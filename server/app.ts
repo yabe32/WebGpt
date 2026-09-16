@@ -7,6 +7,7 @@ import { z, ZodError } from 'zod';
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import PDFDocument from 'pdfkit';
 import type { Config } from './config.js';
 import { Store } from './db.js';
 import { Auth } from './auth.js';
@@ -403,6 +404,25 @@ export function createApp(cfg: Config, rpc: Rpc) {
     })].join('\n');
     store.audit(res.locals.session.user_id, 'chat.exported', null, { chatId: cid, format: 'markdown' });
     res.set({ 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(snapshot.chat.title.slice(0, 80) + '.md') }).send(body);
+  });
+  app.get('/api/chats/:id/export/pdf', (req, res) => {
+    const cid = id.parse(req.params.id), snapshot = store.snapshot(cid, res.locals.session.user_id);
+    store.audit(res.locals.session.user_id, 'chat.exported', null, { chatId: cid, format: 'pdf' });
+    res.set({ 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(snapshot.chat.title.slice(0, 80) + '.pdf') });
+    const pdf = new PDFDocument({ margin: 48, info: { Title: snapshot.chat.title } }); pdf.pipe(res); pdf.fontSize(20).text(snapshot.chat.title); pdf.moveDown();
+    for (const m of snapshot.messages) { pdf.fontSize(13).text(m.role === 'user' ? 'Du' : 'Assistent'); pdf.fontSize(10).text(m.text || ''); pdf.moveDown(); }
+    pdf.end();
+  });
+  app.get('/api/chats/:id/export/zip', async (req, res) => {
+    const cid = id.parse(req.params.id), snapshot = store.snapshot(cid, res.locals.session.user_id);
+    const files = [...new Set(snapshot.messages.flatMap((m: any) => m.attachments || []))];
+    store.audit(res.locals.session.user_id, 'chat.exported', null, { chatId: cid, format: 'zip' });
+    res.set({ 'Content-Type': 'application/zip', 'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(snapshot.chat.title.slice(0, 80) + '.zip') });
+    const archiver = (await import('archiver') as any).default as (format: string, options: any) => any;
+    const zip = archiver('zip', { zlib: { level: 9 } }); zip.on('error', (e: Error) => res.destroy(e)); zip.pipe(res);
+    zip.append(JSON.stringify(snapshot, null, 2), { name: 'chat.json' });
+    for (const file of files) if (store.get('SELECT id FROM artifacts WHERE id=?', file)) zip.file(artifacts.file(file), { name: 'bilder/' + file + '.png' });
+    await zip.finalize();
   });
   app.post('/api/chats/:id/send', async (req, res) => {
     const v = z
