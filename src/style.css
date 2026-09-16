@@ -939,6 +939,11 @@ dialog > p {
 .admin-edit label { grid-column: 1 / -1; }
 .admin-edit button { grid-column: 1 / -1; justify-self: start; padding: 8px 11px; }
 .admin-actions { display: flex; gap: 14px; margin-top: 8px; }
+.project-controls { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: 10px 0 4px; }
+.project-controls select { min-width: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.project-controls .quiet, .archive-filter { font-size: 11px; padding: 7px 8px; }
+.archive-filter { margin: 3px 0 10px; color: var(--muted); }
+.chat-link small { display: block; margin-top: 3px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
 .superuser-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px 0 18px; }
 .superuser-filters select, .superuser-section input, .superuser-section textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px; color: var(--ink); background: var(--surface); }
 .superuser-section { border-top: 1px solid var(--line); padding: 16px 0; }

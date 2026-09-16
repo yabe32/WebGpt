@@ -576,6 +576,9 @@ function App() {
   const [auth, setAuth] = useState<any>(),
     [error, setError] = useState(''),
     [list, setList] = useState<Chat[]>([]),
+    [projects, setProjects] = useState<any[]>([]),
+    [projectFilter, setProjectFilter] = useState(''),
+    [showArchived, setShowArchived] = useState(false),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<string | null>(null),
     [snap, setSnap] = useState<Snapshot | null>(null),
@@ -633,11 +636,15 @@ function App() {
   const refreshList = useCallback(async () => {
     if (auth?.authenticated)
       try {
-        setList(await api('/chats?q=' + encodeURIComponent(search)));
+        const query = new URLSearchParams({ q: search });
+        if (projectFilter) query.set('projectId', projectFilter);
+        if (showArchived) query.set('archived', 'true');
+        const [chats, projectList] = await Promise.all([api<Chat[]>('/chats?' + query), api('/projects')]);
+        setList(chats); setProjects(projectList);
       } catch (e) {
         setError((e as Error).message);
       }
-  }, [auth?.authenticated, search]);
+  }, [auth?.authenticated, search, projectFilter, showArchived]);
   useEffect(() => {
     const t = setTimeout(refreshList, 150);
     return () => clearTimeout(t);
@@ -721,6 +728,11 @@ function App() {
       pending.current = null;
       await refreshList();
     });
+  }
+  async function createProject() {
+    const name = window.prompt('Name des Projekts');
+    if (!name?.trim()) return;
+    await act(async () => { await api('/projects', 'POST', { name: name.trim() }); await refreshList(); });
   }
   async function upload(files: FileList | File[] | null) {
     if (!files) return;
@@ -833,6 +845,14 @@ function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
+        <div className="project-controls">
+          <select aria-label="Projekt filtern" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <option value="">Alle Projekte</option>
+            {projects.map((p) => <option value={p.id} key={p.id}>{p.name} ({p.chats})</option>)}
+          </select>
+          <button className="quiet" onClick={() => void createProject()}><Plus size={15} /> Projekt</button>
+        </div>
+        <button className="quiet archive-filter" onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Aktuelle Chats' : 'Archiv'}</button>
         <div className="list-label">
           UNTERHALTUNGEN <span>{list.length}</span>
         </div>
@@ -847,7 +867,7 @@ function App() {
               }}
             >
               <MessageSquare size={16} />
-              <span>{c.title}</span>
+              <span>{c.title}<small>{(c as any).project_name || ''}{(c as any).tags?.length ? ' · ' + (c as any).tags.join(', ') : ''}</small></span>
               {c.parent_id && <GitBranch size={13} />}
             </button>
           ))}
