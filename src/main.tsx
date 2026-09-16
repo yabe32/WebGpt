@@ -457,11 +457,11 @@ function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: bo
   </Modal>;
 }
 function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id: string) => void }) {
-  const [data, setData] = useState<any>(), [audit, setAudit] = useState<any[]>([]), [group, setGroup] = useState(''), [account, setAccount] = useState(''),
+  const [data, setData] = useState<any>(), [audit, setAudit] = useState<any[]>([]), [warnings, setWarnings] = useState<any[]>([]), [group, setGroup] = useState(''), [account, setAccount] = useState(''),
     [query, setQuery] = useState(''), [chats, setChats] = useState<any[]>([]), [selected, setSelected] = useState<any>(),
     [days, setDays] = useState(30), [instructions, setInstructions] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const refresh = useCallback(async () => {
-    try { const [overview, auditEvents] = await Promise.all([api('/superuser/overview' + (account ? '?userId=' + account : group ? '?group=' + encodeURIComponent(group) : '')), api<any[]>('/superuser/audit')]); setData(overview); setAudit(auditEvents); }
+    try { const [overview, auditEvents, warningEvents] = await Promise.all([api('/superuser/overview' + (account ? '?userId=' + account : group ? '?group=' + encodeURIComponent(group) : '')), api<any[]>('/superuser/audit'), api<any[]>('/superuser/warnings')]); setData(overview); setAudit(auditEvents); setWarnings(warningEvents); }
     catch (e) { setError((e as Error).message); }
   }, [account, group]);
   const findChats = useCallback(async () => {
@@ -484,6 +484,7 @@ function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id:
       <span>{Number((data?.events || []).reduce((n: number, e: any) => n + e.delta_total_tokens, 0)).toLocaleString('de-DE')}<small>Tokens im Protokoll</small></span>
       <span>{data?.events?.length || 0}<small>Token-Ereignisse</small></span>
     </section>
+    {warnings.length > 0 && <section className="superuser-section"><h3>Warnungen</h3>{warnings.map((w) => <p className="error" key={w.id}>{w.username}{w.account_group ? ' · ' + w.account_group : ''}: {w.failed ? w.failed + ' fehlgeschlagene Antworten in 24 Std.' : 'Bildlimit erreicht'}</p>)}</section>}
     <section className="superuser-section"><h3>Token-Protokoll</h3><p className="muted">Zeitpunkt = Empfang des Tokenstands vom Codex App Server; Δ = seit dem vorherigen Stand derselben Antwort neu verbrauchte Tokens.</p>
       <div className="usage-log">{(data?.events || []).slice(0, 80).map((e: any) => <div key={e.id}><time>{new Date(e.observed_at).toLocaleString('de-DE')}</time><b>{e.username}</b><span>{e.account_group || 'ohne Gruppe'}</span><strong>+{Number(e.delta_total_tokens).toLocaleString('de-DE')} Tokens</strong><small>Stand {Number(e.total_tokens).toLocaleString('de-DE')} · Ein {e.delta_input_tokens} · Aus {e.delta_output_tokens + e.delta_reasoning_output_tokens}</small></div>)}</div>
     </section>
