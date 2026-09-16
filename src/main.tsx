@@ -409,7 +409,7 @@ function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: bo
     </section>
     <form onSubmit={(e) => {
       e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setError('');
-      api('/admin/users', 'POST', { username: form.get('username'), password: form.get('password'), role: form.get('role'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')) })
+      api('/admin/users', 'POST', { username: form.get('username'), password: form.get('password'), role: form.get('role'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')), imageLimitPerHour: Number(form.get('image-limit')), webSearchLimitPerHour: Number(form.get('search-limit')), uploadLimitMb: Number(form.get('upload-limit')), parallelTurnLimit: Number(form.get('parallel-limit')) })
         .then(() => { (e.currentTarget as HTMLFormElement).reset(); return refresh(); })
         .catch((x) => setError(x.message)).finally(() => setBusy(false));
     }} className="admin-create">
@@ -421,6 +421,10 @@ function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: bo
       <input name="limit" aria-label="Stundenlimit" type="number" min={1} max={10000} defaultValue={60} />
       <label>Tokenlimit 5 Std. <input name="token-five" aria-label="Tokenlimit für fünf Stunden" type="number" min={0} max={1000000000} defaultValue={0} /></label>
       <label>Tokenlimit Woche <input name="token-week" aria-label="Wöchentliches Tokenlimit" type="number" min={0} max={1000000000} defaultValue={0} /></label>
+      <label>Bilder / Std. <input name="image-limit" type="number" min={0} defaultValue={0} /></label>
+      <label>Websuchen / Std. <input name="search-limit" type="number" min={0} defaultValue={0} /></label>
+      <label>Upload MB <input name="upload-limit" type="number" min={0} defaultValue={0} /></label>
+      <label>Parallele Antworten <input name="parallel-limit" type="number" min={1} defaultValue={1} /></label>
       <button className="primary" disabled={busy}>Konto erstellen</button>
     </form>
     <div className="admin-users">
@@ -433,9 +437,13 @@ function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: bo
           Eingabe: {Number(u.input_tokens || 0).toLocaleString('de-DE')} · Ausgabe inkl. Reasoning: {Number(u.output_tokens || 0).toLocaleString('de-DE')}
         </p>
         <small>Tokenlimit: 5 Std. {u.token_limit_five_hours ? Number(u.token_limit_five_hours).toLocaleString('de-DE') : 'unbegrenzt'} · Woche {u.token_limit_week ? Number(u.token_limit_week).toLocaleString('de-DE') : 'unbegrenzt'} (0 = unbegrenzt)</small>
-        <form className="admin-edit" onSubmit={(e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const password = String(form.get('password') || ''); void change(u.id, { username: form.get('username'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')), ...(password ? { password } : {}) }); }}>
+        <form className="admin-edit" onSubmit={(e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const password = String(form.get('password') || ''); void change(u.id, { username: form.get('username'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')), imageLimitPerHour: Number(form.get('image-limit')), webSearchLimitPerHour: Number(form.get('search-limit')), uploadLimitMb: Number(form.get('upload-limit')), parallelTurnLimit: Number(form.get('parallel-limit')), ...(password ? { password } : {}) }); }}>
           <label>Tokenlimit 5 Std. <input name="token-five" aria-label={'Tokenlimit für fünf Stunden für ' + u.username} type="number" min={0} max={1000000000} defaultValue={u.token_limit_five_hours} /></label>
           <label>Tokenlimit Woche <input name="token-week" aria-label={'Wöchentliches Tokenlimit für ' + u.username} type="number" min={0} max={1000000000} defaultValue={u.token_limit_week} /></label>
+          <label>Bilder / Std. <input name="image-limit" type="number" min={0} defaultValue={u.image_limit_per_hour} /></label>
+          <label>Websuchen / Std. <input name="search-limit" type="number" min={0} defaultValue={u.web_search_limit_per_hour} /></label>
+          <label>Upload MB <input name="upload-limit" type="number" min={0} defaultValue={u.upload_limit_mb} /></label>
+          <label>Parallele Antworten <input name="parallel-limit" type="number" min={1} defaultValue={u.parallel_turn_limit} /></label>
           <input name="username" aria-label={'Benutzername für ' + u.username} defaultValue={u.username} required maxLength={80} />
           <input name="account-group" aria-label={'Kontogruppe für ' + u.username} defaultValue={u.account_group || ''} placeholder="Gruppe, z. B. Arbeit" maxLength={80} />
           <input name="password" aria-label={'Neues Passwort für ' + u.username} placeholder="Neues Passwort (optional)" type="password" minLength={12} maxLength={128} />
