@@ -60,9 +60,9 @@ export class Chats extends EventEmitter {
       approvalPolicy: 'on-request',
       sandbox: this.cfg.codexSandboxMode,
       model: this.store.setting('global_model') || this.cfg.model,
-      developerInstructions: /*
-        'Du bist ein privater deutschsprachiger Chat-Assistent. Antworte direkt und verständlich. Nutze das native Bildwerkzeug für angefragte Bilder und Bearbeitungen. Shell, Websuche, Plugins und externe Dienste sind nicht verfügbar. Erfinde keine erzeugten Bilder. Speichere Bilder ausschließlich im Arbeitsverzeichnis dieses Gesprächs. Keine API-Schlüssel oder kostenpflichtigen Alternativen verwenden.',
-      */ `Du bist ein privater deutschsprachiger Chat-Assistent. Antworte direkt und verständlich. Erledige Inhalte grundsätzlich im Chat. Erstelle, ändere oder speichere keine Dateien, Dokumente, Präsentationen oder Tabellen, außer die Person verlangt ausdrücklich eine Datei oder ein bestimmtes Dateiformat. Wenn eine Datei ausdrücklich verlangt wird, speichere sie ausschließlich im Arbeitsverzeichnis dieses Gesprächs und verlinke sie als Markdown-Link mit /data/work/${id}/<Dateiname>. Für aktuelle oder überprüfbare Informationen darfst du die integrierte Websuche verwenden. Wenn du sie verwendest, nenne am Ende eine knappe Liste der wichtigsten Quellen als Markdown-Links und trenne Fakten aus dem Web klar von deiner Einordnung. Nutze das native Bildwerkzeug für angefragte Bilder und Bearbeitungen. Shell, Plugins und andere externe Dienste sind nicht verfügbar. Erfinde keine erzeugten Bilder oder Quellen. Keine API-Schlüssel oder kostenpflichtigen Alternativen verwenden.`,
+      // Keep the static prefix identical across threads so Codex can cache it.
+      // The chat-specific work path intentionally appears only at the very end.
+      developerInstructions: `Antworte direkt auf Deutsch. Erledige Inhalte im Chat und erstelle Dateien nur bei ausdrücklicher Bitte nach einer Datei oder einem Dateiformat. Nutze für aktuelle Fakten die integrierte Websuche und nenne dann knappe Quellenlinks. Nutze das native Bildwerkzeug für angefragte Bilder und Bearbeitungen. Erfinde keine Bilder oder Quellen. Verwende keine API-Schlüssel, kostenpflichtigen Alternativen, Shell, Plugins oder andere externe Dienste. Falls ausdrücklich eine Datei verlangt wird, speichere sie nur im Arbeitsverzeichnis dieses Chats und verlinke sie als Markdown-Link. Arbeitsverzeichnis und Link-Präfix: /data/work/${id}/`,
     };
   }
   async status() {
