@@ -104,8 +104,8 @@ export class Chats extends EventEmitter {
     const chat = this.store.chat(chatId, userId);
     if (!chat) throw fail('Gespräch nicht gefunden.', 404);
     if (userId) {
-      const user = this.store.get<{ rate_limit_per_hour: number; token_limit_five_hours: number; token_limit_week: number }>(
-        'SELECT rate_limit_per_hour,token_limit_five_hours,token_limit_week FROM users WHERE id=? AND active=1',
+      const user = this.store.get<{ rate_limit_per_hour: number; token_limit_five_hours: number; token_limit_week: number; image_limit_per_hour: number; web_search_limit_per_hour: number; parallel_turn_limit: number }>(
+        'SELECT rate_limit_per_hour,token_limit_five_hours,token_limit_week,image_limit_per_hour,web_search_limit_per_hour,parallel_turn_limit FROM users WHERE id=? AND active=1',
         userId,
       );
       if (!user) throw fail('Dieses Konto ist deaktiviert.', 403);
@@ -130,6 +130,18 @@ export class Chats extends EventEmitter {
         throw fail('Wöchentliches Tokenlimit ist erreicht. Bitte später erneut versuchen.', 429);
       if (used >= user.rate_limit_per_hour)
         throw fail('Dein Stundenlimit für Modellanfragen ist erreicht. Bitte später erneut versuchen.', 429);
+      const parallel = this.store.get<{ n: number }>(
+        `SELECT COUNT(*) n FROM turns t JOIN chats c ON c.id=t.chat_id
+         WHERE c.user_id=? AND t.chat_id<>? AND t.status IN ('starting','running')`, userId, chatId,
+      )!.n;
+      if (parallel >= user.parallel_turn_limit)
+        throw fail('Die maximale Zahl gleichzeitig laufender Antworten für dieses Konto ist erreicht.', 429);
+      const images = this.store.get<{ n: number }>("SELECT COUNT(*) n FROM usage_events WHERE user_id=? AND kind='image' AND created_at>=?", userId, since)!.n;
+      if (user.image_limit_per_hour > 0 && images >= user.image_limit_per_hour)
+        throw fail('Das Stundenlimit für Bilder dieses Kontos ist erreicht.', 429);
+      const searches = this.store.get<{ n: number }>("SELECT COUNT(*) n FROM usage_events WHERE user_id=? AND kind='webSearch' AND created_at>=?", userId, since)!.n;
+      if (user.web_search_limit_per_hour > 0 && searches >= user.web_search_limit_per_hour)
+        throw fail('Das Stundenlimit für Websuchen dieses Kontos ist erreicht.', 429);
     }
     if (
       this.store.get(

@@ -26,6 +26,10 @@ const managedUser = z.object({
   rateLimitPerHour: z.number().int().min(1).max(10000).default(60),
   tokenLimitFiveHours: z.number().int().min(0).max(1_000_000_000).default(0),
   tokenLimitWeek: z.number().int().min(0).max(1_000_000_000).default(0),
+  imageLimitPerHour: z.number().int().min(0).max(100000).default(0),
+  webSearchLimitPerHour: z.number().int().min(0).max(100000).default(0),
+  uploadLimitMb: z.number().int().min(0).max(1024).default(0),
+  parallelTurnLimit: z.number().int().min(1).max(100).default(1),
 });
 export function createApp(cfg: Config, rpc: Rpc) {
   const app = express(),
@@ -118,7 +122,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
       fiveHours = now - 5 * 3600000,
       week = now - 7 * 24 * 3600000;
     const users = store.all(
-      `SELECT u.id,u.username,u.access_level AS role,u.account_group,u.active,u.rate_limit_per_hour,u.token_limit_five_hours,u.token_limit_week,u.created_at,u.last_login_at,
+      `SELECT u.id,u.username,u.access_level AS role,u.account_group,u.active,u.rate_limit_per_hour,u.token_limit_five_hours,u.token_limit_week,u.image_limit_per_hour,u.web_search_limit_per_hour,u.upload_limit_mb,u.parallel_turn_limit,u.created_at,u.last_login_at,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id=u.id AND s.expires_at>?) AS sessions,
         (SELECT COUNT(*) FROM chats c WHERE c.user_id=u.id) AS chats,
         (SELECT COUNT(*) FROM usage_events e WHERE e.user_id=u.id AND e.kind='turn') AS turns,
@@ -172,6 +176,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
       throw Object.assign(Error('Nur ein Superuser kann Superuserkonten anlegen.'), { status: 403 });
     const userId = await auth.createUser(v.username, v.password, v.role, v.rateLimitPerHour, v.accountGroup);
     store.run('UPDATE users SET token_limit_five_hours=?,token_limit_week=? WHERE id=?', v.tokenLimitFiveHours, v.tokenLimitWeek, userId);
+    store.run('UPDATE users SET image_limit_per_hour=?,web_search_limit_per_hour=?,upload_limit_mb=?,parallel_turn_limit=? WHERE id=?', v.imageLimitPerHour, v.webSearchLimitPerHour, v.uploadLimitMb, v.parallelTurnLimit, userId);
     res.status(201).json({ id: userId });
   });
   app.patch('/api/admin/users/:id', auth.requireAdmin, async (req, res) => {
@@ -183,6 +188,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
       rateLimitPerHour: z.number().int().min(1).max(10000).optional(),
       tokenLimitFiveHours: z.number().int().min(0).max(1_000_000_000).optional(),
       tokenLimitWeek: z.number().int().min(0).max(1_000_000_000).optional(),
+      imageLimitPerHour: z.number().int().min(0).max(100000).optional(), webSearchLimitPerHour: z.number().int().min(0).max(100000).optional(), uploadLimitMb: z.number().int().min(0).max(1024).optional(), parallelTurnLimit: z.number().int().min(1).max(100).optional(),
       username: z.string().trim().min(1).max(80).optional(),
       password: z.string().min(12).max(128).optional(),
     }).parse(req.body);
@@ -204,6 +210,10 @@ export function createApp(cfg: Config, rpc: Rpc) {
     if (v.rateLimitPerHour) store.run('UPDATE users SET rate_limit_per_hour=? WHERE id=?', v.rateLimitPerHour, userId);
     if (v.tokenLimitFiveHours !== undefined) store.run('UPDATE users SET token_limit_five_hours=? WHERE id=?', v.tokenLimitFiveHours, userId);
     if (v.tokenLimitWeek !== undefined) store.run('UPDATE users SET token_limit_week=? WHERE id=?', v.tokenLimitWeek, userId);
+    if (v.imageLimitPerHour !== undefined) store.run('UPDATE users SET image_limit_per_hour=? WHERE id=?', v.imageLimitPerHour, userId);
+    if (v.webSearchLimitPerHour !== undefined) store.run('UPDATE users SET web_search_limit_per_hour=? WHERE id=?', v.webSearchLimitPerHour, userId);
+    if (v.uploadLimitMb !== undefined) store.run('UPDATE users SET upload_limit_mb=? WHERE id=?', v.uploadLimitMb, userId);
+    if (v.parallelTurnLimit !== undefined) store.run('UPDATE users SET parallel_turn_limit=? WHERE id=?', v.parallelTurnLimit, userId);
     await auth.updateUser(userId, { username: v.username, password: v.password }, res.locals.session.id);
     if (v.active === false) store.run('DELETE FROM sessions WHERE user_id=?', userId);
     res.json({ ok: true });
@@ -472,6 +482,9 @@ export function createApp(cfg: Config, rpc: Rpc) {
   });
   app.post('/api/uploads', upload.single('image'), async (req, res) => {
     if (!req.file) throw Object.assign(Error('Bild fehlt.'), { status: 400 });
+    const limit = store.get<{ upload_limit_mb: number }>('SELECT upload_limit_mb FROM users WHERE id=?', res.locals.session.user_id)?.upload_limit_mb || 0;
+    if (limit > 0 && req.file.size > limit * 1024 * 1024)
+      throw Object.assign(Error('Das Uploadlimit dieses Kontos ist erreicht.'), { status: 413 });
     res.status(201).json({ id: await artifacts.save(req.file.buffer, res.locals.session.user_id) });
   });
   app.get('/api/files/:id', (req, res) => {
