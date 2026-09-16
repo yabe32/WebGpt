@@ -226,6 +226,16 @@ export function createApp(cfg: Config, rpc: Rpc) {
      LEFT JOIN users actor ON actor.id=a.actor_user_id LEFT JOIN users target ON target.id=a.target_user_id
      ORDER BY a.created_at DESC LIMIT 500`,
   )));
+  app.get('/api/superuser/warnings', auth.requireSuperuser, (_req, res) => {
+    const now = Date.now();
+    const warnings = store.all<any>(
+      `SELECT u.username,u.account_group,u.id,u.image_limit_per_hour,
+       (SELECT COUNT(*) FROM turns t JOIN chats c ON c.id=t.chat_id WHERE c.user_id=u.id AND t.status='failed' AND t.created_at>=?) failed,
+       (SELECT COUNT(*) FROM usage_events e WHERE e.user_id=u.id AND e.kind='image' AND e.created_at>=?) images
+       FROM users u WHERE u.active=1 ORDER BY failed DESC,images DESC`, now - 86400000, now - 3600000,
+    ).filter((x) => x.failed > 0 || (x.images > 0 && x.image_limit_per_hour > 0 && x.images >= x.image_limit_per_hour));
+    res.json(warnings);
+  });
   app.get('/api/superuser/overview', auth.requireSuperuser, (req, res) => {
     const accountId = req.query.userId ? id.parse(req.query.userId) : null;
     const accountGroup = typeof req.query.group === 'string' ? req.query.group.slice(0, 80) : null;
