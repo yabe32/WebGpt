@@ -28,7 +28,7 @@ export class Auth {
     const token = req.cookies?.session;
     if (typeof token !== 'string') return;
     return this.store.get(
-      'SELECT s.*,u.username,u.role,u.active,u.rate_limit_per_hour FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1',
+      'SELECT s.*,u.username,u.role,u.access_level,u.active,u.rate_limit_per_hour FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1',
       digest(token),
       Date.now(),
     );
@@ -75,7 +75,7 @@ export class Auth {
     this.store.db.transaction(() => {
       this.store.run('INSERT INTO owner VALUES (1,?,?)', username, hash);
       this.store.run(
-        "INSERT INTO users(id,username,password_hash,role,active,rate_limit_per_hour,created_at) VALUES (?,?,?,'admin',1,240,?)",
+        "INSERT INTO users(id,username,password_hash,role,access_level,active,rate_limit_per_hour,created_at) VALUES (?,?,?,'admin','superuser',1,240,?)",
         userId,
         username,
         hash,
@@ -115,14 +115,23 @@ export class Auth {
   }
   requireAdmin = (req: Request, res: Response, next: NextFunction) => {
     this.require(req, res, () => {
-      if (res.locals.session.role !== 'admin') {
+      if (!['admin', 'superuser'].includes(res.locals.session.access_level)) {
         res.status(403).json({ error: 'Adminzugang erforderlich.' });
         return;
       }
       next();
     });
   };
-  async createUser(username: string, password: string, role: 'admin' | 'member', limit: number) {
+  requireSuperuser = (req: Request, res: Response, next: NextFunction) => {
+    this.require(req, res, () => {
+      if (res.locals.session.access_level !== 'superuser') {
+        res.status(403).json({ error: 'Superuserzugang erforderlich.' });
+        return;
+      }
+      next();
+    });
+  };
+  async createUser(username: string, password: string, role: 'superuser' | 'admin' | 'member', limit: number, accountGroup = '') {
     const existing = this.store.get('SELECT id FROM users WHERE username=?', username);
     if (existing) throw Object.assign(Error('Dieser Benutzername ist bereits vergeben.'), { status: 409 });
     const hash = await argon2.hash(password, {
@@ -133,11 +142,13 @@ export class Auth {
     });
     const id = randomUUID();
     this.store.run(
-      'INSERT INTO users(id,username,password_hash,role,active,rate_limit_per_hour,created_at) VALUES (?,?,?,?,1,?,?)',
+      'INSERT INTO users(id,username,password_hash,role,access_level,account_group,active,rate_limit_per_hour,created_at) VALUES (?,?,?,?,?,?,1,?,?)',
       id,
       username,
       hash,
+      role === 'member' ? 'member' : 'admin',
       role,
+      accountGroup,
       limit,
       Date.now(),
     );
@@ -152,7 +163,7 @@ export class Auth {
       parallelism: 1,
     });
     this.store.run(
-      "INSERT INTO users(id,username,password_hash,role,active,rate_limit_per_hour,created_at) VALUES (?,?,?,'member',0,60,?)",
+      "INSERT INTO users(id,username,password_hash,role,access_level,active,rate_limit_per_hour,created_at) VALUES (?,?,?,'member','member',0,60,?)",
       randomUUID(),
       username,
       hash,

@@ -48,17 +48,19 @@ Der Befehl zeigt ausschließlich lokal deinen zufälligen einmaligen Einrichtung
 
 Der Website-Login und die ChatGPT-Anmeldung sind getrennt. Sitzungen sind serverseitig gespeichert und unter **Einstellungen → Angemeldete Geräte** widerrufbar. Abmelden entfernt die aktuelle Sitzung. Sitzungen laufen nach 30 Tagen ab.
 
-## Admin-Panel und Konten
+## Rollen, Admin-Panel und Konten
 
-Der bei der Ersteinrichtung angelegte Benutzer ist ein Admin. Bestehende Installationen migrieren das bisherige Eigentümerkonto beim ersten Start automatisch zu diesem Admin; vorhandene Chats und Dateien bleiben diesem Konto zugeordnet. Öffentliche Registrierung gibt es nicht.
+Der bei der Ersteinrichtung angelegte Benutzer wird beim nächsten Start automatisch zum ersten **Superuser**. Bestehende Chats und Dateien bleiben diesem Konto zugeordnet. Besucher können auf der Anmeldeseite einen Zugang beantragen; neue Konten bleiben bis zur Freischaltung deaktiviert.
 
-Admins öffnen **Einstellungen → Admin-Panel**. Dort können sie Mitglieder oder weitere Admins anlegen, Konten aktivieren/deaktivieren, Rollen ändern und ein Stundenlimit für Modellanfragen pro Konto setzen. Das Panel zeigt nur Metadaten und App-Zähler: Zahl der Unterhaltungen, Modellanfragen, Bilder, Websuchen, aktive Sitzungen und Anfragen der letzten Stunde. Private Nachrichtentexte anderer Konten werden dort nicht angezeigt.
+Admins öffnen **Einstellungen → Admin-Panel**. Dort können sie Mitglieder oder weitere Admins anlegen, Konten aktivieren/deaktivieren, Gruppen wie `Schule`, `Arbeit` oder `Zuhause` vergeben und individuelle Limits verwalten. Das Panel zeigt nur Metadaten und App-Zähler; private Nachrichtentexte anderer Konten werden dort nicht angezeigt.
+
+Nur Superuser sehen zusätzlich **Einstellungen → Superuser-Bereich**. Dort lassen sich alle Chats aller Konten schreibgeschützt durchsuchen und ansehen. Außerdem enthält er ein unveränderliches Token-Ereignisprotokoll: Konto, Gruppenname, Empfangszeitpunkt, aktueller Stand und neu hinzugekommene Tokens jeder vom Codex App Server gemeldeten Aktualisierung. Es beginnt mit dieser Version und kann keine historischen Zwischenstände rekonstruieren. Superuser können aus dem Text der ausgewählten Konten oder Gruppe einen neuen, eigenen Auswertungs-Chat erzeugen. Bilder und Anhänge fließen dabei nicht in die Zusammenfassung ein; das Quellmaterial wird auf 120.000 Zeichen begrenzt und eine Kürzung wird im Prompt kenntlich gemacht.
 
 Besucher einer eingerichteten Website können auf der Anmeldeseite **Neuen Zugang beantragen** wählen. Ihr Konto wird als deaktiviertes Mitglied angelegt und hat bis zur Freischaltung keinen Zugang. Im Admin-Panel erscheint es als `deaktiviert`; **Freischalten** aktiviert es. Eine öffentliche Registrierung kann nie Adminrechte erzeugen.
 
 Das Stundenlimit wird vor dem nächsten Codex-Turn erzwungen. Die von Codex gelieferten ChatGPT-Nutzungslimits gelten dagegen für das verbundene ChatGPT-Konto insgesamt und können technisch nicht einzelnen Website-Konten zugeteilt werden. Deaktivieren widerruft alle Sitzungen dieses Kontos. Mindestens ein aktiver Admin bleibt geschützt.
 
-Nur Admins sehen diese globalen Codex-Nutzungslimits. Im selben Panel lässt sich unter **Globales Modell** ein Modell aus dem aktuellen Codex-Katalog auswählen. Die Auswahl wird in der App-Datenbank gespeichert und gilt für alle folgenden beziehungsweise wieder aufgenommenen Gespräche. Laufende Antworten müssen vorher beendet werden. Angezeigt werden nur im Katalog sichtbare Modelle mit Bildeingabe, damit Uploads weiterhin funktionieren; die verfügbare Liste und Kontolimits kommen vom angemeldeten ChatGPT-Codex-Konto.
+Admins und Superuser sehen diese globalen Codex-Nutzungslimits. Im selben Panel lässt sich unter **Globales Modell** ein Modell aus dem aktuellen Codex-Katalog auswählen. Die Auswahl wird in der App-Datenbank gespeichert und gilt für alle folgenden beziehungsweise wieder aufgenommenen Gespräche. Laufende Antworten müssen vorher beendet werden. Angezeigt werden nur im Katalog sichtbare Modelle mit Bildeingabe, damit Uploads weiterhin funktionieren; die verfügbare Liste und Kontolimits kommen vom angemeldeten ChatGPT-Codex-Konto.
 
 Das Admin-Panel zeigt außerdem die von Codex gemeldeten Tokenwerte je Website-Konto: Gesamt, laufende fünf Stunden, laufende Woche sowie Eingabe- und Ausgabeanteile einschließlich Reasoning. Die Werte werden pro Turn überschrieben, falls Codex einen präziseren Zwischenstand liefert. Mitglieder erhalten weder diesen Endpunkt noch eine Tokenanzeige.
 

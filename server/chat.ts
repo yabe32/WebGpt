@@ -221,6 +221,9 @@ export class Chats extends EventEmitter {
       this.store.run('UPDATE turns SET codex_id=? WHERE id=?', r.turn.id, id);
       this.publish(chat.id);
     } catch (e) {
+      // Tests and orderly shutdown can close SQLite while a cancelled remote
+      // preparation is still unwinding. There is no process left to persist to.
+      if (!this.store.open) return;
       this.clearIdleTimer(id);
       this.store.run(
         "UPDATE turns SET status='failed',error=? WHERE id=? AND status IN ('starting','running')",
@@ -377,6 +380,27 @@ export class Chats extends EventEmitter {
     const usage = payload.tokenUsage.last;
     const number = (value: unknown) =>
       typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+    const next = {
+      input: number(usage.inputTokens), cached: number(usage.cachedInputTokens), cacheWrite: number(usage.cacheWriteInputTokens),
+      output: number(usage.outputTokens), reasoning: number(usage.reasoningOutputTokens), total: number(usage.totalTokens),
+    };
+    const previous = this.store.get<any>('SELECT * FROM turn_token_usage WHERE turn_id=?', turn.id);
+    const delta = (field: string, value: number) => Math.max(0, value - Number(previous?.[field] || 0));
+    const changed = !previous || [
+      ['input_tokens', next.input], ['cached_input_tokens', next.cached], ['cache_write_input_tokens', next.cacheWrite],
+      ['output_tokens', next.output], ['reasoning_output_tokens', next.reasoning], ['total_tokens', next.total],
+    ].some(([field, value]) => Number(previous[field]) !== value);
+    const observedAt = Date.now();
+    if (changed) this.store.run(
+      `INSERT INTO token_usage_events(
+        turn_id,user_id,observed_at,input_tokens,cached_input_tokens,cache_write_input_tokens,
+        output_tokens,reasoning_output_tokens,total_tokens,delta_input_tokens,delta_cached_input_tokens,
+        delta_cache_write_input_tokens,delta_output_tokens,delta_reasoning_output_tokens,delta_total_tokens
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      turn.id, userId, observedAt, next.input, next.cached, next.cacheWrite, next.output, next.reasoning, next.total,
+      delta('input_tokens', next.input), delta('cached_input_tokens', next.cached), delta('cache_write_input_tokens', next.cacheWrite),
+      delta('output_tokens', next.output), delta('reasoning_output_tokens', next.reasoning), delta('total_tokens', next.total),
+    );
     this.store.run(
       `INSERT INTO turn_token_usage(
         turn_id,user_id,input_tokens,cached_input_tokens,cache_write_input_tokens,
@@ -392,13 +416,7 @@ export class Chats extends EventEmitter {
         updated_at=excluded.updated_at`,
       turn.id,
       userId,
-      number(usage.inputTokens),
-      number(usage.cachedInputTokens),
-      number(usage.cacheWriteInputTokens),
-      number(usage.outputTokens),
-      number(usage.reasoningOutputTokens),
-      number(usage.totalTokens),
-      Date.now(),
+      next.input, next.cached, next.cacheWrite, next.output, next.reasoning, next.total, observedAt,
     );
   }
   private async importImage(chatId: string, turnId: string, threadId: string, item: any) {

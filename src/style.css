@@ -939,6 +939,25 @@ dialog > p {
 .admin-edit label { grid-column: 1 / -1; }
 .admin-edit button { grid-column: 1 / -1; justify-self: start; padding: 8px 11px; }
 .admin-actions { display: flex; gap: 14px; margin-top: 8px; }
+.superuser-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px 0 18px; }
+.superuser-filters select, .superuser-section input, .superuser-section textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px; color: var(--ink); background: var(--surface); }
+.superuser-section { border-top: 1px solid var(--line); padding: 16px 0; }
+.superuser-section h3 { margin-bottom: 7px; }
+.superuser-section > label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.superuser-section > label input { width: 90px; }
+.superuser-section textarea { min-height: 82px; resize: vertical; margin-bottom: 10px; }
+.usage-log { max-height: 290px; overflow: auto; border: 1px solid var(--line); border-radius: 9px; }
+.usage-log > div { display: grid; grid-template-columns: 145px 1fr auto; gap: 5px 10px; padding: 9px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.usage-log > div:last-child { border-bottom: 0; }
+.usage-log time, .usage-log span, .usage-log small { color: var(--muted); }
+.usage-log small { grid-column: 1 / -1; }
+.superuser-chats { max-height: 230px; overflow: auto; margin-top: 9px; border: 1px solid var(--line); border-radius: 9px; }
+.superuser-chats .chat-link { width: 100%; border-radius: 0; border-bottom: 1px solid var(--line); padding: 10px; text-align: left; }
+.superuser-chats .chat-link:last-child { border-bottom: 0; }
+.superuser-chats small { display: block; color: var(--muted); margin-top: 4px; }
+.superuser-chats time { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.superuser-preview { margin-top: 10px; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 9px; padding: 12px; }
+.superuser-preview .message { margin: 8px 0; }
 .nav-backdrop {
   display: none;
 }
@@ -1120,6 +1139,9 @@ dialog > p {
   .settings-section .secondary {
     min-height: 42px;
   }
+  .superuser-filters { grid-template-columns: 1fr; }
+  .usage-log > div { grid-template-columns: 1fr auto; }
+  .usage-log time { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   * {

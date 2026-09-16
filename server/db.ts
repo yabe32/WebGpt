@@ -15,6 +15,8 @@ export type User = {
   id: string;
   username: string;
   role: 'admin' | 'member';
+  access_level: 'superuser' | 'admin' | 'member';
+  account_group: string;
   active: number;
   rate_limit_per_hour: number;
   token_limit_five_hours: number;
@@ -91,9 +93,41 @@ CREATE INDEX turn_tokens_user_time ON turn_token_usage(user_id,updated_at);
 ALTER TABLE users ADD COLUMN token_limit_five_hours INTEGER NOT NULL DEFAULT 0 CHECK(token_limit_five_hours BETWEEN 0 AND 1000000000);
 ALTER TABLE users ADD COLUMN token_limit_week INTEGER NOT NULL DEFAULT 0 CHECK(token_limit_week BETWEEN 0 AND 1000000000);
 `,
+  `
+ALTER TABLE users ADD COLUMN access_level TEXT NOT NULL DEFAULT 'member' CHECK(access_level IN ('superuser','admin','member'));
+ALTER TABLE users ADD COLUMN account_group TEXT NOT NULL DEFAULT '';
+UPDATE users SET access_level=CASE
+  WHEN username=(SELECT username FROM owner WHERE id=1) THEN 'superuser'
+  WHEN role='admin' THEN 'admin'
+  ELSE 'member'
+END;
+CREATE INDEX users_access_level ON users(access_level);
+CREATE INDEX users_account_group ON users(account_group);
+CREATE TABLE token_usage_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  observed_at INTEGER NOT NULL,
+  input_tokens INTEGER NOT NULL,
+  cached_input_tokens INTEGER NOT NULL,
+  cache_write_input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  reasoning_output_tokens INTEGER NOT NULL,
+  total_tokens INTEGER NOT NULL,
+  delta_input_tokens INTEGER NOT NULL,
+  delta_cached_input_tokens INTEGER NOT NULL,
+  delta_cache_write_input_tokens INTEGER NOT NULL,
+  delta_output_tokens INTEGER NOT NULL,
+  delta_reasoning_output_tokens INTEGER NOT NULL,
+  delta_total_tokens INTEGER NOT NULL
+);
+CREATE INDEX token_usage_events_user_time ON token_usage_events(user_id,observed_at DESC);
+CREATE INDEX token_usage_events_turn_time ON token_usage_events(turn_id,observed_at);
+`,
 ];
 export class Store {
   db: Database.Database;
+  open = true;
   constructor(cfg: Config) {
     this.db = new Database(path.join(cfg.data, 'app.sqlite'));
     this.db.pragma('journal_mode = WAL');
@@ -181,6 +215,7 @@ export class Store {
     }
   }
   close() {
+    this.open = false;
     this.db.close();
   }
 }

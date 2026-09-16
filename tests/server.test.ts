@@ -186,6 +186,48 @@ describe('Website security (no live model)', () => {
     const weekLimited = await member.post('/api/chats/' + memberChat.body.id + '/send').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', memberCsrf).send({ key: randomUUID(), text: 'drei', attachments: [] }).expect(429);
     expect(weekLimited.body.error).toMatch(/Wöchentliches/);
   });
+  it('restricts cross-account chat inspection, token events and summaries to a superuser', async () => {
+    const s = setup(), csrf = await login(s);
+    expect((await s.agent.get('/api/auth')).body.user.role).toBe('superuser');
+    const adminId = (await post(s, '/admin/users', csrf, {
+      username: 'admin', password: 'admin-password-long', role: 'admin', accountGroup: 'Arbeit', rateLimitPerHour: 60,
+    }).expect(201)).body.id;
+    const memberId = (await post(s, '/admin/users', csrf, {
+      username: 'schule', password: 'schule-password-long', role: 'member', accountGroup: 'Schule', rateLimitPerHour: 60,
+    }).expect(201)).body.id;
+    const admin = request.agent(s.app);
+    await admin.post('/api/auth/login').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat')
+      .send({ username: 'admin', password: 'admin-password-long' }).expect(200);
+    const adminCsrf = (await admin.get('/api/auth')).body.csrf;
+    await admin.get('/api/superuser/overview').expect(403);
+    await admin.post('/api/admin/users').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', adminCsrf)
+      .send({ username: 'forbidden', password: 'forbidden-password-long', role: 'superuser', rateLimitPerHour: 60 }).expect(403);
+    const member = request.agent(s.app);
+    await member.post('/api/auth/login').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat')
+      .send({ username: 'schule', password: 'schule-password-long' }).expect(200);
+    const memberCsrf = (await member.get('/api/auth')).body.csrf;
+    const foreign = await member.post('/api/chats').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', memberCsrf).send({}).expect(201);
+    await member.post('/api/chats/' + foreign.body.id + '/send').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', memberCsrf)
+      .send({ key: randomUUID(), text: 'Mathe Hausaufgaben Thema', attachments: [] }).expect(202);
+    await pause();
+    const thread = s.store.chat(foreign.body.id)!.thread_id!;
+    s.rpc.tokenUsage(thread, { totalTokens: 40, inputTokens: 12, outputTokens: 28 });
+    await pause();
+    s.rpc.tokenUsage(thread, { totalTokens: 65, inputTokens: 20, outputTokens: 45 });
+    await pause();
+    const overview = await s.agent.get('/api/superuser/overview').query({ group: 'Schule' }).expect(200);
+    expect(overview.body.accounts.find((u: any) => u.id === memberId).account_group).toBe('Schule');
+    expect(overview.body.events).toHaveLength(2);
+    expect(overview.body.events.map((e: any) => e.delta_total_tokens)).toEqual([25, 40]);
+    const list = await s.agent.get('/api/superuser/chats').query({ group: 'Schule', q: 'Hausaufgaben' }).expect(200);
+    expect(list.body[0]).toMatchObject({ id: foreign.body.id, username: 'schule', account_group: 'Schule' });
+    const snapshot = await s.agent.get('/api/superuser/chats/' + foreign.body.id).expect(200);
+    expect(snapshot.body.messages[0].text).toBe('Mathe Hausaufgaben Thema');
+    const summary = await post(s, '/superuser/summaries', csrf, { accountGroup: 'Schule', days: 30, instructions: 'Nenne Themen.' }).expect(202);
+    expect(summary.body.chat.user_id).toBeTruthy();
+    expect(s.rpc.calls.filter((c) => c.method === 'turn/start').at(-1)?.params.input[0].text).toContain('Mathe Hausaufgaben Thema');
+    expect(adminId).toBeTruthy();
+  });
 });
 describe('Chat persistence and protocol fixtures', () => {
   it('serializes cancelled thread preparation before a replacement send', async () => {

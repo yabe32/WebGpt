@@ -177,7 +177,7 @@ function Login({ configured, done }: { configured: boolean; done: () => void }) 
     </main>
   );
 }
-function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => void; onLogout: () => void; isAdmin: boolean; openAdmin: () => void }) {
+function Preferences({ close, onLogout, isAdmin, isSuperuser, openAdmin, openSuperuser }: { close: () => void; onLogout: () => void; isAdmin: boolean; isSuperuser: boolean; openAdmin: () => void; openSuperuser: () => void }) {
   const [status, setStatus] = useState<any>(null),
     [sessions, setSessions] = useState<any[]>([]),
     [login, setLogin] = useState<any>(),
@@ -317,6 +317,7 @@ function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => voi
           <h3>Verwaltung</h3>
           <p className="muted">Konten, App-Nutzung und individuelle Stundenlimits verwalten.</p>
           <button className="secondary" onClick={openAdmin}><Users size={16} /> Admin-Panel</button>
+          {isSuperuser && <button className="secondary" onClick={openSuperuser}><ShieldCheck size={16} /> Superuser-Bereich</button>}
         </section>
       )}
       <section className="settings-section">
@@ -369,7 +370,7 @@ function Preferences({ close, onLogout, isAdmin, openAdmin }: { close: () => voi
     </Modal>
   );
 }
-function AdminPanel({ close }: { close: () => void }) {
+function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: boolean }) {
   const [data, setData] = useState<any>(),
     [models, setModels] = useState<any>(),
     [error, setError] = useState(''),
@@ -408,14 +409,15 @@ function AdminPanel({ close }: { close: () => void }) {
     </section>
     <form onSubmit={(e) => {
       e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setError('');
-      api('/admin/users', 'POST', { username: form.get('username'), password: form.get('password'), role: form.get('role'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')) })
+      api('/admin/users', 'POST', { username: form.get('username'), password: form.get('password'), role: form.get('role'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')) })
         .then(() => { (e.currentTarget as HTMLFormElement).reset(); return refresh(); })
         .catch((x) => setError(x.message)).finally(() => setBusy(false));
     }} className="admin-create">
       <h3>Konto anlegen</h3>
       <input name="username" aria-label="Neuer Benutzername" placeholder="Benutzername" required maxLength={80} />
       <input name="password" aria-label="Neues Passwort" placeholder="Passwort (mindestens 12 Zeichen)" type="password" required minLength={12} maxLength={128} />
-      <select name="role" aria-label="Rolle"><option value="member">Mitglied</option><option value="admin">Admin</option></select>
+      <select name="role" aria-label="Rolle"><option value="member">Mitglied</option><option value="admin">Admin</option>{isSuperuser && <option value="superuser">Superuser</option>}</select>
+      <input name="account-group" aria-label="Kontogruppe" placeholder="Gruppe, z. B. Schule" maxLength={80} />
       <input name="limit" aria-label="Stundenlimit" type="number" min={1} max={10000} defaultValue={60} />
       <label>Tokenlimit 5 Std. <input name="token-five" aria-label="Tokenlimit für fünf Stunden" type="number" min={0} max={1000000000} defaultValue={0} /></label>
       <label>Tokenlimit Woche <input name="token-week" aria-label="Wöchentliches Tokenlimit" type="number" min={0} max={1000000000} defaultValue={0} /></label>
@@ -423,7 +425,7 @@ function AdminPanel({ close }: { close: () => void }) {
     </form>
     <div className="admin-users">
       {(data?.users || []).map((u: any) => <article key={u.id} className="admin-user">
-        <div><strong>{u.username}</strong><small>{u.role === 'admin' ? 'Admin' : 'Mitglied'} · {u.active ? 'aktiv' : 'deaktiviert'} · {u.sessions} Sitzungen</small></div>
+        <div><strong>{u.username}</strong><small>{u.role === 'superuser' ? 'Superuser' : u.role === 'admin' ? 'Admin' : 'Mitglied'} · {u.account_group || 'ohne Gruppe'} · {u.active ? 'aktiv' : 'deaktiviert'} · {u.sessions} Sitzungen</small></div>
         <p>
           {u.turns} Anfragen · {u.images} Bilder · {u.web_searches} Suchen<br />
           {u.turns_last_hour}/{u.rate_limit_per_hour} Anfragen in der letzten Stunde<br />
@@ -431,18 +433,61 @@ function AdminPanel({ close }: { close: () => void }) {
           Eingabe: {Number(u.input_tokens || 0).toLocaleString('de-DE')} · Ausgabe inkl. Reasoning: {Number(u.output_tokens || 0).toLocaleString('de-DE')}
         </p>
         <small>Tokenlimit: 5 Std. {u.token_limit_five_hours ? Number(u.token_limit_five_hours).toLocaleString('de-DE') : 'unbegrenzt'} · Woche {u.token_limit_week ? Number(u.token_limit_week).toLocaleString('de-DE') : 'unbegrenzt'} (0 = unbegrenzt)</small>
-        <form className="admin-edit" onSubmit={(e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const password = String(form.get('password') || ''); void change(u.id, { username: form.get('username'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')), ...(password ? { password } : {}) }); }}>
+        <form className="admin-edit" onSubmit={(e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const password = String(form.get('password') || ''); void change(u.id, { username: form.get('username'), accountGroup: form.get('account-group'), rateLimitPerHour: Number(form.get('limit')), tokenLimitFiveHours: Number(form.get('token-five')), tokenLimitWeek: Number(form.get('token-week')), ...(password ? { password } : {}) }); }}>
           <label>Tokenlimit 5 Std. <input name="token-five" aria-label={'Tokenlimit für fünf Stunden für ' + u.username} type="number" min={0} max={1000000000} defaultValue={u.token_limit_five_hours} /></label>
           <label>Tokenlimit Woche <input name="token-week" aria-label={'Wöchentliches Tokenlimit für ' + u.username} type="number" min={0} max={1000000000} defaultValue={u.token_limit_week} /></label>
           <input name="username" aria-label={'Benutzername für ' + u.username} defaultValue={u.username} required maxLength={80} />
+          <input name="account-group" aria-label={'Kontogruppe für ' + u.username} defaultValue={u.account_group || ''} placeholder="Gruppe, z. B. Arbeit" maxLength={80} />
           <input name="password" aria-label={'Neues Passwort für ' + u.username} placeholder="Neues Passwort (optional)" type="password" minLength={12} maxLength={128} />
           <label>Stundenlimit <input name="limit" aria-label={'Stundenlimit für ' + u.username} type="number" min={1} max={10000} defaultValue={u.rate_limit_per_hour} /></label>
           <button className="secondary" disabled={busy}>Änderungen speichern</button>
         </form>
-        <div className="admin-actions"><button className="quiet" disabled={busy} onClick={() => void change(u.id, { active: !u.active })}>{u.active ? 'Deaktivieren' : 'Freischalten'}</button><button className="quiet" disabled={busy} onClick={() => void change(u.id, { role: u.role === 'admin' ? 'member' : 'admin' })}>{u.role === 'admin' ? 'Zum Mitglied machen' : 'Zum Admin machen'}</button></div>
+        <div className="admin-actions"><button className="quiet" disabled={busy} onClick={() => void change(u.id, { active: !u.active })}>{u.active ? 'Deaktivieren' : 'Freischalten'}</button>{(isSuperuser || u.role !== 'superuser') && <button className="quiet" disabled={busy} onClick={() => void change(u.id, { role: u.role === 'admin' ? 'member' : 'admin' })}>{u.role === 'admin' ? 'Zum Mitglied machen' : 'Zum Admin machen'}</button>}</div>
       </article>)}
     </div>
     <p className="muted">Die Zähler zeigen App-Aktionen und Codex-Tokenwerte, keine privaten Nachrichteninhalte. Tokenwerte und globale Codex-Limits sind nur hier im Admin-Panel sichtbar.</p>
+  </Modal>;
+}
+function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id: string) => void }) {
+  const [data, setData] = useState<any>(), [group, setGroup] = useState(''), [account, setAccount] = useState(''),
+    [query, setQuery] = useState(''), [chats, setChats] = useState<any[]>([]), [selected, setSelected] = useState<any>(),
+    [days, setDays] = useState(30), [instructions, setInstructions] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const refresh = useCallback(async () => {
+    try { setData(await api('/superuser/overview' + (account ? '?userId=' + account : group ? '?group=' + encodeURIComponent(group) : ''))); }
+    catch (e) { setError((e as Error).message); }
+  }, [account, group]);
+  const findChats = useCallback(async () => {
+    try {
+      const p = new URLSearchParams(); if (account) p.set('userId', account); if (group) p.set('group', group); if (query) p.set('q', query);
+      setChats(await api('/superuser/chats?' + p));
+    } catch (e) { setError((e as Error).message); }
+  }, [account, group, query]);
+  useEffect(() => { void refresh(); void findChats(); }, [refresh, findChats]);
+  const groups: string[] = Array.from(new Set<string>((data?.accounts || []).map((a: any) => String(a.account_group || '')).filter(Boolean)));
+  return <Modal title="Superuser-Bereich" close={close}>
+    <p className="muted">Dieser Bereich enthält private Inhalte aller Konten. Nutze ihn nur für die von dir verwalteten Konten.</p>
+    {error && <p className="error" role="alert">{error}</p>}
+    <section className="superuser-filters">
+      <select aria-label="Kontogruppe filtern" value={group} onChange={(e) => { setGroup(e.target.value); setAccount(''); }}><option value="">Alle Gruppen</option>{groups.map((g: string) => <option key={g}>{g}</option>)}</select>
+      <select aria-label="Konto filtern" value={account} onChange={(e) => { setAccount(e.target.value); setGroup(''); }}><option value="">Alle Konten</option>{(data?.accounts || []).map((a: any) => <option key={a.id} value={a.id}>{a.username}{a.account_group ? ' · ' + a.account_group : ''}</option>)}</select>
+    </section>
+    <section className="admin-summary">
+      <span>{data?.accounts?.length || 0}<small>Konten</small></span><span>{chats.length}<small>Chats</small></span>
+      <span>{Number((data?.events || []).reduce((n: number, e: any) => n + e.delta_total_tokens, 0)).toLocaleString('de-DE')}<small>Tokens im Protokoll</small></span>
+      <span>{data?.events?.length || 0}<small>Token-Ereignisse</small></span>
+    </section>
+    <section className="superuser-section"><h3>Token-Protokoll</h3><p className="muted">Zeitpunkt = Empfang des Tokenstands vom Codex App Server; Δ = seit dem vorherigen Stand derselben Antwort neu verbrauchte Tokens.</p>
+      <div className="usage-log">{(data?.events || []).slice(0, 80).map((e: any) => <div key={e.id}><time>{new Date(e.observed_at).toLocaleString('de-DE')}</time><b>{e.username}</b><span>{e.account_group || 'ohne Gruppe'}</span><strong>+{Number(e.delta_total_tokens).toLocaleString('de-DE')} Tokens</strong><small>Stand {Number(e.total_tokens).toLocaleString('de-DE')} · Ein {e.delta_input_tokens} · Aus {e.delta_output_tokens + e.delta_reasoning_output_tokens}</small></div>)}</div>
+    </section>
+    <section className="superuser-section"><h3>Chats durchsuchen</h3><input aria-label="Chats durchsuchen" value={query} placeholder="Titel oder Nachrichteninhalt" onChange={(e) => setQuery(e.target.value)} />
+      <div className="superuser-chats">{chats.map((c) => <button key={c.id} className="chat-link" onClick={() => api('/superuser/chats/' + c.id).then(setSelected).catch((e) => setError(e.message))}><span><b>{c.title}</b><small>{c.username} · {c.account_group || 'ohne Gruppe'} · {c.message_count} Nachrichten</small></span><time>{new Date(c.updated_at).toLocaleDateString('de-DE')}</time></button>)}</div>
+      {selected && <div className="superuser-preview"><h4>{selected.chat.title}</h4><p className="muted">{selected.messages.length} Nachrichten · schreibgeschützte Ansicht</p>{selected.messages.map((m: Message) => <article className={'message ' + m.role} key={m.id}><RenderMessage m={m} chatId={selected.chat.id} zoom={() => {}} /></article>)}</div>}
+    </section>
+    <section className="superuser-section"><h3>Zusammenfassung erzeugen</h3><p className="muted">Erstellt einen neuen Chat in deinem Superuserkonto. Verwendet werden Textnachrichten der gewählten Konten bzw. Gruppe aus dem Zeitraum; Bildinhalte werden nicht ausgewertet.</p>
+      <label>Zeitraum <input aria-label="Zeitraum in Tagen" type="number" min={1} max={3650} value={days} onChange={(e) => setDays(Number(e.target.value))} /> Tage</label>
+      <textarea aria-label="Zusatzvorgabe für Zusammenfassung" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Optional: Worauf soll die Auswertung besonders achten?" />
+      <button className="primary" disabled={busy} onClick={() => { setBusy(true); setError(''); api<any>('/superuser/summaries', 'POST', { userIds: account ? [account] : [], accountGroup: group, days, instructions }).then((r) => { close(); openChat(r.chat.id); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); }}>Zusammenfassung starten</button>
+    </section>
   </Modal>;
 }
 function normalizeMath(text: string) {
@@ -540,6 +585,7 @@ function App() {
     [sending, setSending] = useState(false),
     [settings, setSettings] = useState(false),
     [admin, setAdmin] = useState(false),
+    [superuser, setSuperuser] = useState(false),
     [nav, setNav] = useState(false),
     [notice, setNotice] = useState(''),
     [online, setOnline] = useState(true),
@@ -1106,8 +1152,9 @@ function App() {
           }}
         />
       </main>
-      {settings && <Preferences close={() => setSettings(false)} onLogout={refreshAuth} isAdmin={auth.user?.role === 'admin'} openAdmin={() => { setSettings(false); setAdmin(true); }} />}{' '}
-      {admin && <AdminPanel close={() => setAdmin(false)} />}
+      {settings && <Preferences close={() => setSettings(false)} onLogout={refreshAuth} isAdmin={['admin', 'superuser'].includes(auth.user?.role)} isSuperuser={auth.user?.role === 'superuser'} openAdmin={() => { setSettings(false); setAdmin(true); }} openSuperuser={() => { setSettings(false); setSuperuser(true); }} />}{' '}
+      {admin && <AdminPanel close={() => setAdmin(false)} isSuperuser={auth.user?.role === 'superuser'} />}
+      {superuser && <SuperuserPanel close={() => setSuperuser(false)} openChat={(chatId) => { setSelected(chatId); setSuperuser(false); }} />}
       {zoom && (
         <Modal title="Bildansicht" close={() => setZoom(null)}>
           <img className="zoom-image" src={'/api/files/' + zoom} alt="Vergrößertes Bild" />
