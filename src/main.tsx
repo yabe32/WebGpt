@@ -457,11 +457,11 @@ function AdminPanel({ close, isSuperuser }: { close: () => void; isSuperuser: bo
   </Modal>;
 }
 function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id: string) => void }) {
-  const [data, setData] = useState<any>(), [group, setGroup] = useState(''), [account, setAccount] = useState(''),
+  const [data, setData] = useState<any>(), [audit, setAudit] = useState<any[]>([]), [group, setGroup] = useState(''), [account, setAccount] = useState(''),
     [query, setQuery] = useState(''), [chats, setChats] = useState<any[]>([]), [selected, setSelected] = useState<any>(),
     [days, setDays] = useState(30), [instructions, setInstructions] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const refresh = useCallback(async () => {
-    try { setData(await api('/superuser/overview' + (account ? '?userId=' + account : group ? '?group=' + encodeURIComponent(group) : ''))); }
+    try { const [overview, auditEvents] = await Promise.all([api('/superuser/overview' + (account ? '?userId=' + account : group ? '?group=' + encodeURIComponent(group) : '')), api<any[]>('/superuser/audit')]); setData(overview); setAudit(auditEvents); }
     catch (e) { setError((e as Error).message); }
   }, [account, group]);
   const findChats = useCallback(async () => {
@@ -487,6 +487,7 @@ function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id:
     <section className="superuser-section"><h3>Token-Protokoll</h3><p className="muted">Zeitpunkt = Empfang des Tokenstands vom Codex App Server; Δ = seit dem vorherigen Stand derselben Antwort neu verbrauchte Tokens.</p>
       <div className="usage-log">{(data?.events || []).slice(0, 80).map((e: any) => <div key={e.id}><time>{new Date(e.observed_at).toLocaleString('de-DE')}</time><b>{e.username}</b><span>{e.account_group || 'ohne Gruppe'}</span><strong>+{Number(e.delta_total_tokens).toLocaleString('de-DE')} Tokens</strong><small>Stand {Number(e.total_tokens).toLocaleString('de-DE')} · Ein {e.delta_input_tokens} · Aus {e.delta_output_tokens + e.delta_reasoning_output_tokens}</small></div>)}</div>
     </section>
+    <section className="superuser-section"><h3>Audit-Protokoll</h3><p className="muted">Kontoverwaltung und Projektänderungen. Private Chatinhalte werden nicht protokolliert.</p><div className="usage-log">{audit.slice(0, 80).map((e) => <div key={e.id}><time>{new Date(e.created_at).toLocaleString('de-DE')}</time><b>{e.kind}</b><span>{e.actor_username || 'System'}</span><strong>{e.target_username || ''}</strong></div>)}</div></section>
     <section className="superuser-section"><h3>Chats durchsuchen</h3><input aria-label="Chats durchsuchen" value={query} placeholder="Titel oder Nachrichteninhalt" onChange={(e) => setQuery(e.target.value)} />
       <div className="superuser-chats">{chats.map((c) => <button key={c.id} className="chat-link" onClick={() => api('/superuser/chats/' + c.id).then(setSelected).catch((e) => setError(e.message))}><span><b>{c.title}</b><small>{c.username} · {c.account_group || 'ohne Gruppe'} · {c.message_count} Nachrichten</small></span><time>{new Date(c.updated_at).toLocaleDateString('de-DE')}</time></button>)}</div>
       {selected && <div className="superuser-preview"><h4>{selected.chat.title}</h4><p className="muted">{selected.messages.length} Nachrichten · schreibgeschützte Ansicht</p>{selected.messages.map((m: Message) => <article className={'message ' + m.role} key={m.id}><RenderMessage m={m} chatId={selected.chat.id} zoom={() => {}} /></article>)}</div>}
