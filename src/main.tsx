@@ -592,6 +592,7 @@ function App() {
     [error, setError] = useState(''),
     [list, setList] = useState<Chat[]>([]),
     [projects, setProjects] = useState<any[]>([]),
+    [tags, setTags] = useState<any[]>([]),
     [projectFilter, setProjectFilter] = useState(''),
     [showArchived, setShowArchived] = useState(false),
     [search, setSearch] = useState(''),
@@ -656,8 +657,8 @@ function App() {
         const query = new URLSearchParams({ q: search });
         if (projectFilter) query.set('projectId', projectFilter);
         if (showArchived) query.set('archived', 'true');
-        const [chats, projectList] = await Promise.all([api<Chat[]>('/chats?' + query), api('/projects')]);
-        setList(chats); setProjects(projectList);
+        const [chats, projectList, tagList] = await Promise.all([api<Chat[]>('/chats?' + query), api('/projects'), api('/tags')]);
+        setList(chats); setProjects(projectList); setTags(tagList);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -760,6 +761,20 @@ function App() {
     const name = window.prompt('Thema für dieses Gespräch');
     if (!name?.trim()) return;
     await act(async () => { await api('/chats/' + selected + '/topics', 'POST', { name: name.trim() }); setTopics(await api('/chats/' + selected + '/topics')); });
+  }
+  async function assignProject() {
+    if (!selected) return;
+    const choices = projects.map((p) => p.name).join(', ');
+    const name = window.prompt('Projektname (leer = entfernen):\n' + choices, snap?.chat && (snap.chat as any).project_name || '');
+    if (name === null) return;
+    const project = projects.find((p) => p.name.toLowerCase() === name.trim().toLowerCase());
+    if (name.trim() && !project) { setError('Projekt nicht gefunden. Lege es zuerst in der Seitenleiste an.'); return; }
+    await act(async () => { await api('/chats/' + selected, 'PATCH', { projectId: project?.id || null }); await refreshList(); setSnap(await api('/chats/' + selected)); });
+  }
+  async function addTag() {
+    if (!selected) return;
+    const name = window.prompt('Tag für dieses Gespräch'); if (!name?.trim()) return;
+    await act(async () => { let tag = tags.find((t) => t.name.toLowerCase() === name.trim().toLowerCase()); if (!tag) tag = await api('/tags', 'POST', { name: name.trim() }); const chat = list.find((c) => c.id === selected) as any; await api('/chats/' + selected, 'PATCH', { tagIds: [...(chat?.tags ? chat.tags.map((n: string) => tags.find((t) => t.name === n)?.id).filter(Boolean) : []), tag.id] }); await refreshList(); });
   }
   async function upload(files: FileList | File[] | null) {
     if (!files) return;
@@ -945,6 +960,8 @@ function App() {
           {selected && (
             <div className="header-actions">
               <button className="icon" aria-label="Thema hinzufügen" onClick={() => void addTopic()}>#</button>
+              <button className="icon" aria-label="Projekt zuordnen" onClick={() => void assignProject()}>P</button>
+              <button className="icon" aria-label="Tag hinzufügen" onClick={() => void addTag()}>T</button>
               <a className="icon" aria-label="Chat als Markdown herunterladen" href={'/api/chats/' + selected + '/export/markdown'} download><Download size={17} /></a>
               <a className="icon" aria-label="Chat als PDF herunterladen" href={'/api/chats/' + selected + '/export/pdf'} download>PDF</a>
               <a className="icon" aria-label="Chat und Bilder als ZIP herunterladen" href={'/api/chats/' + selected + '/export/zip'} download>ZIP</a>
