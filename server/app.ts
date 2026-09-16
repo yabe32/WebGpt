@@ -177,6 +177,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
     const userId = await auth.createUser(v.username, v.password, v.role, v.rateLimitPerHour, v.accountGroup);
     store.run('UPDATE users SET token_limit_five_hours=?,token_limit_week=? WHERE id=?', v.tokenLimitFiveHours, v.tokenLimitWeek, userId);
     store.run('UPDATE users SET image_limit_per_hour=?,web_search_limit_per_hour=?,upload_limit_mb=?,parallel_turn_limit=? WHERE id=?', v.imageLimitPerHour, v.webSearchLimitPerHour, v.uploadLimitMb, v.parallelTurnLimit, userId);
+    store.audit(res.locals.session.user_id, 'user.created', userId, { role: v.role, accountGroup: v.accountGroup });
     res.status(201).json({ id: userId });
   });
   app.patch('/api/admin/users/:id', auth.requireAdmin, async (req, res) => {
@@ -216,8 +217,14 @@ export function createApp(cfg: Config, rpc: Rpc) {
     if (v.parallelTurnLimit !== undefined) store.run('UPDATE users SET parallel_turn_limit=? WHERE id=?', v.parallelTurnLimit, userId);
     await auth.updateUser(userId, { username: v.username, password: v.password }, res.locals.session.id);
     if (v.active === false) store.run('DELETE FROM sessions WHERE user_id=?', userId);
+    store.audit(res.locals.session.user_id, 'user.updated', userId, { fields: Object.keys(v).filter((key) => key !== 'password') });
     res.json({ ok: true });
   });
+  app.get('/api/superuser/audit', auth.requireSuperuser, (req, res) => res.json(store.all(
+    `SELECT a.*,actor.username actor_username,target.username target_username FROM audit_events a
+     LEFT JOIN users actor ON actor.id=a.actor_user_id LEFT JOIN users target ON target.id=a.target_user_id
+     ORDER BY a.created_at DESC LIMIT 500`,
+  )));
   app.get('/api/superuser/overview', auth.requireSuperuser, (req, res) => {
     const accountId = req.query.userId ? id.parse(req.query.userId) : null;
     const accountGroup = typeof req.query.group === 'string' ? req.query.group.slice(0, 80) : null;
