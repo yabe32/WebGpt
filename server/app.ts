@@ -337,6 +337,20 @@ export function createApp(cfg: Config, rpc: Rpc) {
     res.json({ ok: true });
   });
   app.get('/api/tags', (req, res) => res.json(store.all('SELECT * FROM tags WHERE user_id=? ORDER BY name COLLATE NOCASE', res.locals.session.user_id)));
+  app.get('/api/chats/:id/topics', (req, res) => {
+    const cid = id.parse(req.params.id); store.snapshot(cid, res.locals.session.user_id);
+    res.json(store.all('SELECT * FROM chat_topics WHERE chat_id=? ORDER BY created_at', cid));
+  });
+  app.post('/api/chats/:id/topics', (req, res) => {
+    const cid = id.parse(req.params.id), name = z.object({ name: z.string().trim().min(1).max(80) }).parse(req.body).name;
+    store.snapshot(cid, res.locals.session.user_id);
+    const topicId = randomUUID(); store.run("INSERT OR IGNORE INTO chat_topics(id,chat_id,name,source,created_at) VALUES (?,?,?,'manual',?)", topicId, cid, name, Date.now());
+    res.status(201).json({ id: topicId, name, source: 'manual' });
+  });
+  app.delete('/api/chats/:id/topics/:topicId', (req, res) => {
+    const cid = id.parse(req.params.id), topicId = id.parse(req.params.topicId); store.snapshot(cid, res.locals.session.user_id);
+    store.run("DELETE FROM chat_topics WHERE id=? AND chat_id=? AND source='manual'", topicId, cid); res.json({ ok: true });
+  });
   app.get('/api/gallery', (req, res) => {
     const projectId = req.query.projectId ? id.parse(req.query.projectId) : null;
     const params: any[] = [res.locals.session.user_id];
