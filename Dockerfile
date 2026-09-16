@@ -1,11 +1,17 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
+# The production server has 4 GB RAM. Keep the Node build heap bounded so a
+# client bundle cannot trigger the host OOM killer while the app is running.
+ENV NODE_OPTIONS=--max-old-space-size=1024
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig*.json vite.config.ts index.html ./
 COPY src ./src
+# Client assets depend only on client sources. This cache survives server-only
+# updates such as v0.2.1 and avoids rebuilding the large HEIC bundle.
+RUN npx tsc --noEmit -p tsconfig.client.json && npx vite build
 COPY server ./server
-RUN npm run build
+RUN npx tsc -p tsconfig.server.json
 RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim
