@@ -948,6 +948,8 @@ dialog > p {
 .gallery-item { display:block; text-align:left; min-width:0; }
 .gallery-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
 .gallery-item small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); margin-top:4px; }
+.topic-row { display:flex; gap:5px; margin-top:4px; overflow:hidden; }
+.topic-row span { font-size:10px; border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:2px 6px; white-space:nowrap; }
 .superuser-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px 0 18px; }
 .superuser-filters select, .superuser-section input, .superuser-section textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px; color: var(--ink); background: var(--surface); }
 .superuser-section { border-top: 1px solid var(--line); padding: 16px 0; }

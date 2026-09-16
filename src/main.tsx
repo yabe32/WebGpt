@@ -613,6 +613,7 @@ function App() {
     [editText, setEditText] = useState(''),
     [rename, setRename] = useState(false),
     [title, setTitle] = useState(''),
+    [topics, setTopics] = useState<any[]>([]),
     [deleting, setDeleting] = useState(false),
     [follow, setFollow] = useState(true),
     [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light');
@@ -716,6 +717,10 @@ function App() {
     };
   }, [selected, auth?.authenticated]);
   useEffect(() => {
+    if (!selected) { setTopics([]); return; }
+    void api<any[]>('/chats/' + selected + '/topics').then(setTopics).catch(() => setTopics([]));
+  }, [selected]);
+  useEffect(() => {
     if (follow && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [snap, follow]);
   useEffect(() => {
@@ -749,6 +754,12 @@ function App() {
     const name = window.prompt('Name des Projekts');
     if (!name?.trim()) return;
     await act(async () => { await api('/projects', 'POST', { name: name.trim() }); await refreshList(); });
+  }
+  async function addTopic() {
+    if (!selected) return;
+    const name = window.prompt('Thema für dieses Gespräch');
+    if (!name?.trim()) return;
+    await act(async () => { await api('/chats/' + selected + '/topics', 'POST', { name: name.trim() }); setTopics(await api('/chats/' + selected + '/topics')); });
   }
   async function upload(files: FileList | File[] | null) {
     if (!files) return;
@@ -921,6 +932,7 @@ function App() {
           </button>
           <div className="chat-heading">
             <strong>{snap?.chat.title || 'Ein neuer Gedanke'}</strong>
+            {topics.length > 0 && <small className="topic-row">{topics.map((topic) => <span key={topic.id}>{topic.name}</span>)}</small>}
             <span>
               <i className={online ? 'dot good' : 'dot'} />
               {running
@@ -932,6 +944,7 @@ function App() {
           </div>
           {selected && (
             <div className="header-actions">
+              <button className="icon" aria-label="Thema hinzufügen" onClick={() => void addTopic()}>#</button>
               <a className="icon" aria-label="Chat als Markdown herunterladen" href={'/api/chats/' + selected + '/export/markdown'} download><Download size={17} /></a>
               <a className="icon" aria-label="Chat als PDF herunterladen" href={'/api/chats/' + selected + '/export/pdf'} download>PDF</a>
               <a className="icon" aria-label="Chat und Bilder als ZIP herunterladen" href={'/api/chats/' + selected + '/export/zip'} download>ZIP</a>
