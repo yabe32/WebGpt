@@ -148,6 +148,17 @@ ALTER TABLE artifacts ADD COLUMN original_name TEXT;
 ALTER TABLE artifacts ADD COLUMN parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL;
 ALTER TABLE artifacts ADD COLUMN chat_id TEXT REFERENCES chats(id) ON DELETE SET NULL;
 `,
+  `
+ALTER TABLE chats ADD COLUMN favorited_at INTEGER;
+ALTER TABLE chats ADD COLUMN deleted_at INTEGER;
+ALTER TABLE chats ADD COLUMN delete_after INTEGER;
+CREATE INDEX chats_user_deleted ON chats(user_id,deleted_at,updated_at DESC);
+CREATE TABLE project_files(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,name TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(project_id,artifact_id));
+CREATE TABLE project_tasks(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,title TEXT NOT NULL,completed_at INTEGER,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX project_tasks_project ON project_tasks(project_id,completed_at,updated_at DESC);
+CREATE TABLE backups(id TEXT PRIMARY KEY,path TEXT NOT NULL,created_at INTEGER NOT NULL,status TEXT NOT NULL,error TEXT);
+INSERT OR IGNORE INTO settings(key,value) VALUES ('retention_days','30');
+`,
 ];
 export class Store {
   db: Database.Database;

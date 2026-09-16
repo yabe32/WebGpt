@@ -453,4 +453,21 @@ describe('Chat persistence and protocol fixtures', () => {
     expect(snapshot.turns[0].error).toBeNull();
     expect(s.rpc.calls.some((c) => c.method === 'thread/read')).toBe(true);
   });
+  it('manages projects, documents, favorites, trash and retention', async () => {
+    const s = setup(), csrf = await login(s);
+    const project = (await post(s, '/projects', csrf, { name: 'Schule', instructions: 'Kurz antworten.' }).expect(201)).body;
+    const chat = (await post(s, '/chats', csrf, {}).expect(201)).body;
+    await s.agent.patch('/api/chats/' + chat.id).set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).send({ projectId: project.id, favorite: true }).expect(200);
+    await post(s, '/projects/' + project.id + '/tasks', csrf, { title: 'Gliederung schreiben' }).expect(201);
+    expect((await s.agent.get('/api/projects/' + project.id + '/tasks').expect(200)).body[0].title).toBe('Gliederung schreiben');
+    const document = await s.agent.post('/api/documents').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).attach('document', Buffer.from('Hallo Dokument'), 'notiz.txt').expect(201);
+    await post(s, '/projects/' + project.id + '/files', csrf, { artifactId: document.body.id }).expect(201);
+    expect((await s.agent.get('/api/projects/' + project.id + '/files').expect(200)).body).toHaveLength(1);
+    expect((await s.agent.get('/api/chats?favorite=true').expect(200)).body.map((c: any) => c.id)).toContain(chat.id);
+    await s.agent.delete('/api/chats/' + chat.id).set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).expect(200);
+    expect((await s.agent.get('/api/chats?trash=true').expect(200)).body.map((c: any) => c.id)).toContain(chat.id);
+    await post(s, '/chats/' + chat.id + '/restore', csrf, {}).expect(200);
+    await s.agent.patch('/api/retention').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).send({ days: 14 }).expect(200);
+    expect((await s.agent.get('/api/retention').expect(200)).body.days).toBe(14);
+  });
 });

@@ -595,6 +595,9 @@ function App() {
     [tags, setTags] = useState<any[]>([]),
     [projectFilter, setProjectFilter] = useState(''),
     [showArchived, setShowArchived] = useState(false),
+    [showTrash, setShowTrash] = useState(false),
+    [showFavorites, setShowFavorites] = useState(false),
+    [tagFilter, setTagFilter] = useState(''),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<string | null>(null),
     [snap, setSnap] = useState<Snapshot | null>(null),
@@ -620,7 +623,7 @@ function App() {
     [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light');
   const scroller = useRef<HTMLDivElement>(null),
     fileInput = useRef<HTMLInputElement>(null),
-    cameraInput = useRef<HTMLInputElement>(null),
+    cameraInput = useRef<HTMLInputElement>(null), documentInput = useRef<HTMLInputElement>(null),
     textarea = useRef<HTMLTextAreaElement>(null),
     active = useRef<string | null>(null),
     pending = useRef<any>(null),
@@ -657,12 +660,15 @@ function App() {
         const query = new URLSearchParams({ q: search });
         if (projectFilter) query.set('projectId', projectFilter);
         if (showArchived) query.set('archived', 'true');
+        if (showTrash) query.set('trash', 'true');
+        if (showFavorites) query.set('favorite', 'true');
+        if (tagFilter) query.set('tagId', tagFilter);
         const [chats, projectList, tagList] = await Promise.all([api<Chat[]>('/chats?' + query), api('/projects'), api('/tags')]);
         setList(chats); setProjects(projectList); setTags(tagList);
       } catch (e) {
         setError((e as Error).message);
       }
-  }, [auth?.authenticated, search, projectFilter, showArchived]);
+  }, [auth?.authenticated, search, projectFilter, showArchived, showTrash, showFavorites, tagFilter]);
   useEffect(() => {
     const t = setTimeout(refreshList, 150);
     return () => clearTimeout(t);
@@ -754,7 +760,8 @@ function App() {
   async function createProject() {
     const name = window.prompt('Name des Projekts');
     if (!name?.trim()) return;
-    await act(async () => { await api('/projects', 'POST', { name: name.trim() }); await refreshList(); });
+    const instructions = window.prompt('Optionale Projektanweisungen für Codex', '') ?? '';
+    await act(async () => { await api('/projects', 'POST', { name: name.trim(), instructions }); await refreshList(); });
   }
   async function addTopic() {
     if (!selected) return;
@@ -776,17 +783,24 @@ function App() {
     const name = window.prompt('Tag für dieses Gespräch'); if (!name?.trim()) return;
     await act(async () => { let tag = tags.find((t) => t.name.toLowerCase() === name.trim().toLowerCase()); if (!tag) tag = await api('/tags', 'POST', { name: name.trim() }); const chat = list.find((c) => c.id === selected) as any; await api('/chats/' + selected, 'PATCH', { tagIds: [...(chat?.tags ? chat.tags.map((n: string) => tags.find((t) => t.name === n)?.id).filter(Boolean) : []), tag.id] }); await refreshList(); });
   }
+  async function addTask() {
+    const projectId = (snap?.chat as any)?.project_id;
+    if (!projectId) { setError('Ordne den Chat zuerst einem Projekt zu.'); return; }
+    const title = window.prompt('Neue Projektaufgabe'); if (!title?.trim()) return;
+    await act(async () => { await api('/projects/' + projectId + '/tasks', 'POST', { title: title.trim() }); });
+  }
   async function upload(files: FileList | File[] | null) {
     if (!files) return;
     setUploading(true);
     await act(async () => {
       const arr = Array.from(files);
-      if (attachments.length + arr.length > 6) throw Error('Maximal sechs Bilder pro Nachricht.');
+      if (attachments.length + arr.length > 12) throw Error('Maximal zwölf Anhänge pro Nachricht.');
       for (const file of arr) {
-        const prepared = await appleImage(file);
         const body = new FormData();
-        body.append('image', prepared);
-        const r = await api('/uploads', 'POST', body);
+        const image = file.type.startsWith('image/') || /\.hei[cf]$/i.test(file.name);
+        if (image) { const prepared = await appleImage(file); body.append('image', prepared); }
+        else body.append('document', file);
+        const r = await api(image ? '/uploads' : '/documents', 'POST', body);
         setAttachments((a) => [...a, r.id]);
       }
     });
@@ -896,6 +910,11 @@ function App() {
           <button className="quiet" onClick={() => void createProject()}><Plus size={15} /> Projekt</button>
         </div>
         <button className="quiet archive-filter" onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Aktuelle Chats' : 'Archiv'}</button>
+        <div className="project-controls">
+          <select aria-label="Tag filtern" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+          <button className="quiet" onClick={() => setShowFavorites((v) => !v)}>{showFavorites ? 'Alle' : 'Favoriten'}</button>
+        </div>
+        <button className="quiet archive-filter" onClick={() => setShowTrash((v) => !v)}>{showTrash ? 'Normale Chats' : 'Papierkorb'}</button>
         <div className="list-label">
           UNTERHALTUNGEN <span>{list.length}</span>
         </div>
@@ -962,6 +981,9 @@ function App() {
               <button className="icon" aria-label="Thema hinzufügen" onClick={() => void addTopic()}>#</button>
               <button className="icon" aria-label="Projekt zuordnen" onClick={() => void assignProject()}>P</button>
               <button className="icon" aria-label="Tag hinzufügen" onClick={() => void addTag()}>T</button>
+              <button className="icon" aria-label="Themen vorschlagen" onClick={() => selected && act(async () => { setTopics(await api('/chats/' + selected + '/topics/suggest', 'POST')); })}>✦</button>
+              <button className="icon" aria-label="Favorit umschalten" onClick={() => selected && act(async () => { await api('/chats/' + selected, 'PATCH', { favorite: !(snap?.chat as any).favorited_at }); setSnap(await api('/chats/' + selected)); await refreshList(); })}>★</button>
+              <button className="icon" aria-label="Projektaufgabe hinzufügen" onClick={() => void addTask()}>✓</button>
               <a className="icon" aria-label="Chat als Markdown herunterladen" href={'/api/chats/' + selected + '/export/markdown'} download><Download size={17} /></a>
               <a className="icon" aria-label="Chat als PDF herunterladen" href={'/api/chats/' + selected + '/export/pdf'} download>PDF</a>
               <a className="icon" aria-label="Chat und Bilder als ZIP herunterladen" href={'/api/chats/' + selected + '/export/zip'} download>ZIP</a>
@@ -975,13 +997,7 @@ function App() {
               >
                 <Pencil size={17} />
               </button>
-              <button
-                className="icon"
-                aria-label="Gespräch löschen"
-                onClick={() => setDeleting(true)}
-              >
-                <Trash2 size={17} />
-              </button>
+              {(snap?.chat as any)?.deleted_at ? <button className="icon" aria-label="Gespräch wiederherstellen" onClick={() => selected && act(async () => { await api('/chats/' + selected + '/restore', 'POST'); setSnap(await api('/chats/' + selected)); await refreshList(); })}><RotateCcw size={17} /></button> : <button className="icon" aria-label="Gespräch löschen" onClick={() => setDeleting(true)}><Trash2 size={17} /></button>}
             </div>
           )}
         </header>
@@ -1115,7 +1131,7 @@ function App() {
               <div className="attachments">
                 {attachments.map((id) => (
                   <div key={id}>
-                    <img src={'/api/files/' + id} alt="Anhang-Vorschau" />
+                <span className="file-chip">Anhang</span>
                     <button
                       aria-label="Anhang entfernen"
                       onClick={() => setAttachments((a) => a.filter((x) => x !== id))}
@@ -1164,8 +1180,9 @@ function App() {
                 >
                   <Camera size={20} />
                 </button>
+                <button className="icon" aria-label="Dokument anhängen" disabled={uploading} onClick={() => documentInput.current?.click()}><Paperclip size={16} /></button>
                 <span className="upload-note">
-                  {uploading ? 'Bild wird geprüft …' : 'Text & Bilder'}
+                  {uploading ? 'Anhang wird geprüft …' : 'Text, Bilder & Dokumente'}
                 </span>
               </div>
               {running ? (
@@ -1210,6 +1227,7 @@ function App() {
             e.target.value = '';
           }}
         />
+        <input hidden ref={documentInput} type="file" accept=".pdf,.docx,.xlsx,.csv,.txt" multiple onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
         <input
           hidden
           ref={cameraInput}

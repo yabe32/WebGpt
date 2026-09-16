@@ -38,6 +38,15 @@ export function createApp(cfg: Config, rpc: Rpc) {
     auth = new Auth(store, cfg),
     artifacts = new Artifacts(cfg, store),
     chats = new Chats(store, rpc, cfg, artifacts);
+  const createBackup = async () => {
+    const backupId = randomUUID(), stamp = new Date().toISOString().replace(/[:.]/g, '-'), target = path.join(cfg.data, 'backup-' + stamp + '.sqlite');
+    try { await store.db.backup(target); store.run('INSERT INTO backups VALUES (?,?,?,?,?)', backupId, target, Date.now(), 'ready', null); return { id: backupId, status: 'ready' }; }
+    catch (e) { store.run('INSERT INTO backups VALUES (?,?,?,?,?)', backupId, target, Date.now(), 'failed', friendly(e)); throw e; }
+  };
+  // A daily SQLite-online-backup is safe while the app is serving requests. `unref`
+  // keeps this maintenance timer from preventing a normal server shutdown.
+  if (!store.get<{ id: string }>('SELECT id FROM backups WHERE created_at>?', Date.now() - 86400000)) void createBackup().catch(() => {});
+  setInterval(() => { void createBackup().catch(() => {}); }, 86400000).unref();
   app.disable('x-powered-by');
   if (cfg.trustProxy) app.set('trust proxy', 1);
   app.use(
@@ -330,6 +339,31 @@ export function createApp(cfg: Config, rpc: Rpc) {
     `SELECT p.*,COUNT(c.id) chats FROM projects p LEFT JOIN chats c ON c.project_id=p.id AND c.archived_at IS NULL
      WHERE p.user_id=? AND p.archived_at IS NULL GROUP BY p.id ORDER BY p.updated_at DESC`, res.locals.session.user_id,
   )));
+  app.get('/api/projects/:id/files', (req, res) => {
+    const projectId = id.parse(req.params.id);
+    if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+    res.json(store.all('SELECT pf.*,a.mime,a.bytes,a.original_name FROM project_files pf JOIN artifacts a ON a.id=pf.artifact_id WHERE pf.project_id=? ORDER BY pf.created_at DESC', projectId));
+  });
+  app.post('/api/projects/:id/files', (req, res) => {
+    const projectId = id.parse(req.params.id), artifactId = z.object({ artifactId: id }).parse(req.body).artifactId;
+    if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id) || !artifacts.record(artifactId, res.locals.session.user_id)) throw Object.assign(Error('Projekt oder Datei nicht gefunden.'), { status: 404 });
+    store.run('INSERT OR IGNORE INTO project_files(id,project_id,artifact_id,name,created_at) VALUES (?,?,?,?,?)', randomUUID(), projectId, artifactId, artifacts.record(artifactId, res.locals.session.user_id)!.original_name || 'Datei', Date.now());
+    res.status(201).json({ ok: true });
+  });
+  app.get('/api/projects/:id/tasks', (req, res) => {
+    const projectId = id.parse(req.params.id); if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+    res.json(store.all('SELECT * FROM project_tasks WHERE project_id=? ORDER BY completed_at IS NOT NULL,updated_at DESC', projectId));
+  });
+  app.post('/api/projects/:id/tasks', (req, res) => {
+    const projectId = id.parse(req.params.id), title = z.object({ title: z.string().trim().min(1).max(300) }).parse(req.body).title;
+    if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+    const now = Date.now(), task = { id: randomUUID(), project_id: projectId, title, completed_at: null, created_at: now, updated_at: now }; store.run('INSERT INTO project_tasks VALUES (?,?,?,?,?,?)', task.id, task.project_id, task.title, task.completed_at, task.created_at, task.updated_at); res.status(201).json(task);
+  });
+  app.patch('/api/projects/:id/tasks/:taskId', (req, res) => {
+    const projectId = id.parse(req.params.id), taskId = id.parse(req.params.taskId), completed = z.object({ completed: z.boolean() }).parse(req.body).completed;
+    if (!store.get('SELECT id FROM projects WHERE id=? AND user_id=?', projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
+    store.run('UPDATE project_tasks SET completed_at=?,updated_at=? WHERE id=? AND project_id=?', completed ? Date.now() : null, Date.now(), taskId, projectId); res.json({ ok: true });
+  });
   app.post('/api/projects', (req, res) => {
     const v = z.object({ name: z.string().trim().min(1).max(100), instructions: z.string().max(8000).default('') }).parse(req.body);
     const now = Date.now(), projectId = randomUUID();
@@ -350,6 +384,14 @@ export function createApp(cfg: Config, rpc: Rpc) {
   app.get('/api/chats/:id/topics', (req, res) => {
     const cid = id.parse(req.params.id); store.snapshot(cid, res.locals.session.user_id);
     res.json(store.all('SELECT * FROM chat_topics WHERE chat_id=? ORDER BY created_at', cid));
+  });
+  app.post('/api/chats/:id/topics/suggest', (req, res) => {
+    const cid = id.parse(req.params.id), snapshot = store.snapshot(cid, res.locals.session.user_id);
+    const words = snapshot.messages.flatMap((m) => m.text.toLowerCase().match(/[a-zäöüß][a-zäöüß-]{4,}/gi) || []).filter((w) => !['dieses','deine','einer','einen','einem','wurde','werden','nicht','kannst','bitte'].includes(w));
+    const counts = new Map<string, number>(); words.forEach((w) => counts.set(w, (counts.get(w) || 0) + 1));
+    const suggested = [...counts].sort((a,b) => b[1] - a[1]).slice(0, 5).map(([name]) => name[0].toUpperCase() + name.slice(1));
+    for (const name of suggested) store.run("INSERT OR IGNORE INTO chat_topics(id,chat_id,name,source,created_at) VALUES (?,?,?,'suggested',?)", randomUUID(), cid, name, Date.now());
+    res.json(store.all("SELECT * FROM chat_topics WHERE chat_id=? AND source='suggested' ORDER BY created_at DESC", cid));
   });
   app.post('/api/chats/:id/topics', (req, res) => {
     const cid = id.parse(req.params.id), name = z.object({ name: z.string().trim().min(1).max(80) }).parse(req.body).name;
@@ -372,6 +414,20 @@ export function createApp(cfg: Config, rpc: Rpc) {
        JOIN chats c ON c.id=m.chat_id WHERE a.user_id=? ${filter} ORDER BY a.created_at DESC LIMIT 300`, ...params,
     ));
   });
+  app.get('/api/images/:id/versions', (req, res) => {
+    const artifactId = id.parse(req.params.id);
+    const original = artifacts.record(artifactId, res.locals.session.user_id); if (!original || original.mime !== 'image/png') throw Object.assign(Error('Bild nicht gefunden.'), { status: 404 });
+    res.json(store.all(`WITH RECURSIVE chain(id,parent_artifact_id,mime,created_at) AS (
+      SELECT id,parent_artifact_id,mime,created_at FROM artifacts WHERE id=?
+      UNION ALL SELECT a.id,a.parent_artifact_id,a.mime,a.created_at FROM artifacts a JOIN chain c ON a.parent_artifact_id=c.id
+    ) SELECT * FROM chain ORDER BY created_at`, artifactId));
+  });
+  app.post('/api/images/:id/versions', (req, res) => {
+    const parentId = id.parse(req.params.id), childId = z.object({ artifactId: id }).parse(req.body).artifactId;
+    const parent = artifacts.record(parentId, res.locals.session.user_id), child = artifacts.record(childId, res.locals.session.user_id);
+    if (!parent || !child || parent.mime !== 'image/png' || child.mime !== 'image/png') throw Object.assign(Error('Bild nicht gefunden.'), { status: 404 });
+    store.run('UPDATE artifacts SET parent_artifact_id=? WHERE id=?', parentId, childId); res.json({ ok: true });
+  });
   app.post('/api/tags', (req, res) => {
     const name = z.object({ name: z.string().trim().min(1).max(40) }).parse(req.body).name;
     const existing = store.get('SELECT * FROM tags WHERE user_id=? AND name=?', res.locals.session.user_id, name);
@@ -382,14 +438,14 @@ export function createApp(cfg: Config, rpc: Rpc) {
   });
   app.get('/api/chats', (req, res) => {
     const q = String(req.query.q || '').slice(0, 200);
-    const archived = req.query.archived === 'true', projectId = req.query.projectId ? id.parse(req.query.projectId) : null;
+    const archived = req.query.archived === 'true', trash = req.query.trash === 'true', favorite = req.query.favorite === 'true', projectId = req.query.projectId ? id.parse(req.query.projectId) : null, tagId = req.query.tagId ? id.parse(req.query.tagId) : null, from = Number(req.query.from || 0), to = Number(req.query.to || 0), hasFile = req.query.hasFile === 'true';
     res.json(
       store.all(
         `SELECT DISTINCT c.*,p.name project_name,COALESCE((SELECT json_group_array(t.name) FROM chat_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.chat_id=c.id),'[]') tags
          FROM chats c LEFT JOIN messages m ON m.chat_id=c.id LEFT JOIN projects p ON p.id=c.project_id
-         WHERE c.user_id=? AND c.archived_at IS ${archived ? 'NOT ' : ''}NULL ${projectId ? 'AND c.project_id=?' : ''} AND (c.title LIKE ? OR m.text LIKE ?) ORDER BY c.updated_at DESC`,
+         WHERE c.user_id=? AND c.deleted_at IS ${trash ? 'NOT ' : ''}NULL AND c.archived_at IS ${archived ? 'NOT ' : ''}NULL ${favorite ? 'AND c.favorited_at IS NOT NULL' : ''} ${projectId ? 'AND c.project_id=?' : ''} ${tagId ? 'AND EXISTS (SELECT 1 FROM chat_tags x WHERE x.chat_id=c.id AND x.tag_id=?)' : ''} ${from ? 'AND c.updated_at>=?' : ''} ${to ? 'AND c.updated_at<=?' : ''} ${hasFile ? "AND EXISTS (SELECT 1 FROM messages fm,json_each(fm.attachments) WHERE fm.chat_id=c.id)" : ''} AND (c.title LIKE ? OR m.text LIKE ?) ORDER BY c.updated_at DESC`,
         res.locals.session.user_id,
-        ...(projectId ? [projectId] : []),
+        ...(projectId ? [projectId] : []), ...(tagId ? [tagId] : []), ...(from ? [from] : []), ...(to ? [to] : []),
         '%' + q + '%',
         '%' + q + '%',
       ),
@@ -400,13 +456,14 @@ export function createApp(cfg: Config, rpc: Rpc) {
   app.patch('/api/chats/:id', (req, res) => {
     const cid = id.parse(req.params.id);
     store.snapshot(cid, res.locals.session.user_id);
-    const v = z.object({ title: z.string().trim().min(1).max(120).optional(), projectId: id.nullable().optional(), archived: z.boolean().optional(), tagIds: z.array(id).max(30).optional() }).parse(req.body);
+    const v = z.object({ title: z.string().trim().min(1).max(120).optional(), projectId: id.nullable().optional(), archived: z.boolean().optional(), favorite: z.boolean().optional(), tagIds: z.array(id).max(30).optional() }).parse(req.body);
     if (v.title !== undefined) store.run('UPDATE chats SET title=? WHERE id=?', v.title, cid);
     if (v.projectId !== undefined) {
       if (v.projectId && !store.get('SELECT id FROM projects WHERE id=? AND user_id=? AND archived_at IS NULL', v.projectId, res.locals.session.user_id)) throw Object.assign(Error('Projekt nicht gefunden.'), { status: 404 });
       store.run('UPDATE chats SET project_id=? WHERE id=?', v.projectId, cid);
     }
     if (v.archived !== undefined) store.run('UPDATE chats SET archived_at=? WHERE id=?', v.archived ? Date.now() : null, cid);
+    if (v.favorite !== undefined) store.run('UPDATE chats SET favorited_at=? WHERE id=?', v.favorite ? Date.now() : null, cid);
     if (v.tagIds) {
       const owned = store.all<{ id: string }>(`SELECT id FROM tags WHERE user_id=? AND id IN (${v.tagIds.map(() => '?').join(',')})`, res.locals.session.user_id, ...v.tagIds);
       if (owned.length !== v.tagIds.length) throw Object.assign(Error('Tag nicht gefunden.'), { status: 404 });
@@ -425,11 +482,12 @@ export function createApp(cfg: Config, rpc: Rpc) {
     }
     if (store.get("SELECT id FROM turns WHERE chat_id=? AND status IN ('starting','running')", cid))
       throw Object.assign(Error('Bitte zuerst die Antwort stoppen.'), { status: 409 });
-    // thread/delete can delete descendant forks. Keep Codex rollouts for branch safety; documented retention.
-    store.run('DELETE FROM chats WHERE id=?', cid);
-    chats.emit('deleted', cid);
+    const days = Math.max(1, Math.min(3650, Number(store.setting('retention_days') || 30)));
+    store.run('UPDATE chats SET deleted_at=?,delete_after=? WHERE id=?', Date.now(), Date.now() + days * 86400000, cid);
+    chats.publish(cid);
     res.json({ ok: true });
   });
+  app.post('/api/chats/:id/restore', (req, res) => { const cid = id.parse(req.params.id); store.snapshot(cid, res.locals.session.user_id); store.run('UPDATE chats SET deleted_at=NULL,delete_after=NULL WHERE id=?', cid); chats.publish(cid); res.json({ ok: true }); });
   app.get('/api/chats/:id/export/markdown', (req, res) => {
     const cid = id.parse(req.params.id);
     const snapshot = store.snapshot(cid, res.locals.session.user_id);
@@ -445,7 +503,11 @@ export function createApp(cfg: Config, rpc: Rpc) {
     store.audit(res.locals.session.user_id, 'chat.exported', null, { chatId: cid, format: 'pdf' });
     res.set({ 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(snapshot.chat.title.slice(0, 80) + '.pdf') });
     const pdf = new PDFDocument({ margin: 48, info: { Title: snapshot.chat.title } }); pdf.pipe(res); pdf.fontSize(20).text(snapshot.chat.title); pdf.moveDown();
-    for (const m of snapshot.messages) { pdf.fontSize(13).text(m.role === 'user' ? 'Du' : 'Assistent'); pdf.fontSize(10).text(m.text || ''); pdf.moveDown(); }
+    for (const m of snapshot.messages) {
+      pdf.fontSize(13).text(m.role === 'user' ? 'Du' : 'Assistent'); pdf.fontSize(10).text(m.text || '');
+      for (const file of m.attachments || []) { const a = artifacts.record(file); if (a?.mime === 'image/png') { try { pdf.moveDown(0.3); pdf.image(artifacts.file(file), { fit: [420, 300] }); } catch {} } else if (a) pdf.fontSize(9).fillColor('#555').text('Anhang: ' + (a.original_name || file)).fillColor('#000'); }
+      pdf.moveDown();
+    }
     pdf.end();
   });
   app.get('/api/chats/:id/export/zip', async (req, res) => {
@@ -456,7 +518,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
     const archiver = (await import('archiver') as any).default as (format: string, options: any) => any;
     const zip = archiver('zip', { zlib: { level: 9 } }); zip.on('error', (e: Error) => res.destroy(e)); zip.pipe(res);
     zip.append(JSON.stringify(snapshot, null, 2), { name: 'chat.json' });
-    for (const file of files) if (store.get('SELECT id FROM artifacts WHERE id=?', file)) zip.file(artifacts.file(file), { name: 'bilder/' + file + '.png' });
+    for (const file of files) { const a = artifacts.record(file); if (a) zip.file(artifacts.file(file, a.mime === 'image/png'), { name: (a.mime === 'image/png' ? 'bilder/' : 'dokumente/') + file + '-' + (a.original_name || (a.mime === 'image/png' ? 'bild.png' : 'datei')) }); }
     await zip.finalize();
   });
   app.post('/api/chats/:id/send', async (req, res) => {
@@ -548,6 +610,20 @@ export function createApp(cfg: Config, rpc: Rpc) {
     };
     res.on('close', cleanup);
   });
+  app.get('/api/retention', (_req, res) => res.json({ days: Number(store.setting('retention_days') || 30) }));
+  app.patch('/api/retention', (req, res) => { const days = z.object({ days: z.number().int().min(1).max(3650) }).parse(req.body).days; store.setSetting('retention_days', String(days)); res.json({ days }); });
+  app.get('/api/backups', (_req, res) => res.json(store.all('SELECT * FROM backups ORDER BY created_at DESC LIMIT 30')));
+  app.post('/api/backups', async (_req, res) => res.status(201).json(await createBackup()));
+  app.get('/api/usage/series', (req, res) => {
+    const unit = req.query.unit === 'month' ? 'month' : req.query.unit === 'week' ? 'week' : 'day';
+    const format = unit === 'month' ? '%Y-%m' : unit === 'week' ? '%Y-W%W' : '%Y-%m-%d';
+    const since = Date.now() - Math.max(1, Math.min(3650, Number(req.query.days || 90))) * 86400000;
+    res.json(store.all(`SELECT strftime(?, created_at/1000, 'unixepoch') period,kind,COUNT(*) count FROM usage_events WHERE user_id=? AND created_at>=? GROUP BY period,kind ORDER BY period`, format, res.locals.session.user_id, since));
+  });
+  app.get('/api/usage/by-tag', (req, res) => {
+    const since = Date.now() - Math.max(1, Math.min(3650, Number(req.query.days || 90))) * 86400000;
+    res.json(store.all(`SELECT t.name tag,COUNT(DISTINCT u.id) turns FROM tags t JOIN chat_tags ct ON ct.tag_id=t.id JOIN chats c ON c.id=ct.chat_id JOIN turns u ON u.chat_id=c.id WHERE t.user_id=? AND u.created_at>=? GROUP BY t.id ORDER BY turns DESC`, res.locals.session.user_id, since));
+  });
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: cfg.maxUpload, files: 1, fields: 0 },
@@ -559,6 +635,12 @@ export function createApp(cfg: Config, rpc: Rpc) {
       throw Object.assign(Error('Das Uploadlimit dieses Kontos ist erreicht.'), { status: 413 });
     res.status(201).json({ id: await artifacts.save(req.file.buffer, res.locals.session.user_id) });
   });
+  app.post('/api/documents', upload.single('document'), async (req, res) => {
+    if (!req.file) throw Object.assign(Error('Datei fehlt.'), { status: 400 });
+    const allowed: Record<string, string> = { '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.csv': 'text/csv', '.txt': 'text/plain' };
+    const ext = path.extname(req.file.originalname).toLowerCase(), mime = allowed[ext]; if (!mime) throw Object.assign(Error('Erlaubt sind PDF, DOCX, XLSX, CSV und TXT.'), { status: 415 });
+    res.status(201).json({ id: await artifacts.saveDocument(req.file.buffer, req.file.originalname, mime, res.locals.session.user_id), name: req.file.originalname, mime });
+  });
   app.get('/api/files/:id', (req, res) => {
     const fid = id.parse(req.params.id);
     const canRead = res.locals.session.access_level === 'superuser'
@@ -568,12 +650,13 @@ export function createApp(cfg: Config, rpc: Rpc) {
       res.status(404).end();
       return;
     }
+    const artifact = artifacts.record(fid)!;
     res.set({
-      'Content-Type': 'image/png',
+      'Content-Type': artifact.mime,
       'Cache-Control': 'no-store',
-      'Content-Disposition': `${req.query.download ? 'attachment' : 'inline'}; filename="bild-${fid}.png"`,
+      'Content-Disposition': `${req.query.download || artifact.mime !== 'image/png' ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(artifact.original_name || 'bild-' + fid + '.png')}`,
     });
-    res.sendFile(artifacts.file(fid), { dotfiles: 'allow' });
+    res.sendFile(artifacts.file(fid, artifact.mime === 'image/png'), { dotfiles: 'allow' });
   });
   app.get('/api/chats/:id/files', (req, res) => {
     const chatId = id.parse(req.params.id);

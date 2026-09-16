@@ -219,8 +219,15 @@ export class Chats extends EventEmitter {
         this.loaded.add(chat.thread_id);
       }
       const input: any[] = [{ type: 'text', text, text_elements: [] }];
-      for (const f of attachments)
-        input.push({ type: 'localImage', path: await this.artifacts.input(f, opts.cwd, chat.user_id || undefined) });
+      for (const f of attachments) {
+        const artifact = this.artifacts.record(f, chat.user_id || undefined);
+        if (artifact?.mime === 'image/png') input.push({ type: 'localImage', path: await this.artifacts.input(f, opts.cwd, chat.user_id || undefined) });
+        else if (artifact) {
+          const raw = await fs.readFile(this.artifacts.file(f, false));
+          const extract = raw.toString('utf8').replace(/[^\S\r\n]+/g, ' ').slice(0, 24000);
+          input[0].text += `\n\n[Angehängtes Dokument: ${artifact.original_name || f}]\n${extract || '(Binärdokument; Inhalt kann nicht direkt extrahiert werden.)'}`;
+        }
+      }
       const state = this.store.get<Turn>('SELECT * FROM turns WHERE id=?', id)!;
       if (state.status !== 'starting') return;
       this.store.run("UPDATE turns SET status='running' WHERE id=?", id);
