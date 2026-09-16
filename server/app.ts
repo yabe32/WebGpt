@@ -439,8 +439,7 @@ export function createApp(cfg: Config, rpc: Rpc) {
   app.get('/api/chats', (req, res) => {
     const q = String(req.query.q || '').slice(0, 200);
     const archived = req.query.archived === 'true', trash = req.query.trash === 'true', favorite = req.query.favorite === 'true', projectId = req.query.projectId ? id.parse(req.query.projectId) : null, tagId = req.query.tagId ? id.parse(req.query.tagId) : null, from = Number(req.query.from || 0), to = Number(req.query.to || 0), hasFile = req.query.hasFile === 'true';
-    res.json(
-      store.all(
+    const chatsResult = store.all<any>(
         `SELECT DISTINCT c.*,p.name project_name,COALESCE((SELECT json_group_array(t.name) FROM chat_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.chat_id=c.id),'[]') tags
          FROM chats c LEFT JOIN messages m ON m.chat_id=c.id LEFT JOIN projects p ON p.id=c.project_id
          WHERE c.user_id=? AND c.deleted_at IS ${trash ? 'NOT ' : ''}NULL AND c.archived_at IS ${archived ? 'NOT ' : ''}NULL ${favorite ? 'AND c.favorited_at IS NOT NULL' : ''} ${projectId ? 'AND c.project_id=?' : ''} ${tagId ? 'AND EXISTS (SELECT 1 FROM chat_tags x WHERE x.chat_id=c.id AND x.tag_id=?)' : ''} ${from ? 'AND c.updated_at>=?' : ''} ${to ? 'AND c.updated_at<=?' : ''} ${hasFile ? "AND EXISTS (SELECT 1 FROM messages fm,json_each(fm.attachments) WHERE fm.chat_id=c.id)" : ''} AND (c.title LIKE ? OR m.text LIKE ?) ORDER BY c.updated_at DESC`,
@@ -448,8 +447,8 @@ export function createApp(cfg: Config, rpc: Rpc) {
         ...(projectId ? [projectId] : []), ...(tagId ? [tagId] : []), ...(from ? [from] : []), ...(to ? [to] : []),
         '%' + q + '%',
         '%' + q + '%',
-      ),
-    );
+      );
+    res.json(chatsResult.map((chat) => ({ ...chat, tags: (() => { try { const tags = JSON.parse(chat.tags || '[]'); return Array.isArray(tags) ? tags : []; } catch { return []; } })() })));
   });
   app.post('/api/chats', (_req, res) => res.status(201).json(store.create('Neue Unterhaltung', null, null, res.locals.session.user_id)));
   app.get('/api/chats/:id', (req, res) => res.json(store.snapshot(id.parse(req.params.id), res.locals.session.user_id)));

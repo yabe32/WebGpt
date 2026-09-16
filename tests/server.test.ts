@@ -463,7 +463,9 @@ describe('Chat persistence and protocol fixtures', () => {
     const document = await s.agent.post('/api/documents').set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).attach('document', Buffer.from('Hallo Dokument'), 'notiz.txt').expect(201);
     await post(s, '/projects/' + project.id + '/files', csrf, { artifactId: document.body.id }).expect(201);
     expect((await s.agent.get('/api/projects/' + project.id + '/files').expect(200)).body).toHaveLength(1);
-    expect((await s.agent.get('/api/chats?favorite=true').expect(200)).body.map((c: any) => c.id)).toContain(chat.id);
+    const favorites = (await s.agent.get('/api/chats?favorite=true').expect(200)).body;
+    expect(favorites.map((c: any) => c.id)).toContain(chat.id);
+    expect(Array.isArray(favorites.find((c: any) => c.id === chat.id).tags)).toBe(true);
     await s.agent.delete('/api/chats/' + chat.id).set('Origin', s.cfg.baseUrl).set('X-Requested-With', 'PrivateChat').set('X-CSRF-Token', csrf).expect(200);
     expect((await s.agent.get('/api/chats?trash=true').expect(200)).body.map((c: any) => c.id)).toContain(chat.id);
     await post(s, '/chats/' + chat.id + '/restore', csrf, {}).expect(200);

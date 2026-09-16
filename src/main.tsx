@@ -664,7 +664,10 @@ function App() {
         if (showFavorites) query.set('favorite', 'true');
         if (tagFilter) query.set('tagId', tagFilter);
         const [chats, projectList, tagList] = await Promise.all([api<Chat[]>('/chats?' + query), api('/projects'), api('/tags')]);
-        setList(chats); setProjects(projectList); setTags(tagList);
+        // SQLite json_group_array is returned as a JSON string. Normalize it at
+        // the API boundary so rendering chat metadata can never crash on .join().
+        setList(chats.map((chat: any) => ({ ...chat, tags: Array.isArray(chat.tags) ? chat.tags : (() => { try { const value = JSON.parse(chat.tags || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } })() })));
+        setProjects(projectList); setTags(tagList);
       } catch (e) {
         setError((e as Error).message);
       }
