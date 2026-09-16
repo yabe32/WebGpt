@@ -394,6 +394,16 @@ export function createApp(cfg: Config, rpc: Rpc) {
     chats.emit('deleted', cid);
     res.json({ ok: true });
   });
+  app.get('/api/chats/:id/export/markdown', (req, res) => {
+    const cid = id.parse(req.params.id);
+    const snapshot = store.snapshot(cid, res.locals.session.user_id);
+    const body = ['# ' + snapshot.chat.title, '', ...snapshot.messages.flatMap((m: any) => {
+      const attachments = (m.attachments || []).map((file: string) => `![Bild](${cfg.baseUrl}/api/files/${file})`);
+      return [`## ${m.role === 'user' ? 'Du' : 'Assistent'}`, '', m.text || '', ...attachments, ''];
+    })].join('\n');
+    store.audit(res.locals.session.user_id, 'chat.exported', null, { chatId: cid, format: 'markdown' });
+    res.set({ 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(snapshot.chat.title.slice(0, 80) + '.md') }).send(body);
+  });
   app.post('/api/chats/:id/send', async (req, res) => {
     const v = z
       .object({ key: id, text: z.string().max(100000), attachments: z.array(id).max(6) })
