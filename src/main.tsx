@@ -499,6 +499,11 @@ function SuperuserPanel({ close, openChat }: { close: () => void; openChat: (id:
     </section>
   </Modal>;
 }
+function GalleryPanel({ close, openChat }: { close: () => void; openChat: (id: string) => void }) {
+  const [images, setImages] = useState<any[]>([]), [error, setError] = useState('');
+  useEffect(() => { void api<any[]>('/gallery').then(setImages).catch((e) => setError(e.message)); }, []);
+  return <Modal title="Bildgalerie" close={close}><p className="muted">Bilder aus deinen Gesprächen.</p>{error && <p className="error">{error}</p>}<div className="gallery-grid">{images.map((image) => <button key={image.id} className="gallery-item" onClick={() => { close(); openChat(image.chat_id); }}><img src={'/api/files/' + image.id} alt={image.title} /><small>{image.title}</small></button>)}</div></Modal>;
+}
 function normalizeMath(text: string) {
   return text
     .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_, formula) => `\n\n$$\n${formula}\n$$\n\n`)
@@ -598,6 +603,7 @@ function App() {
     [settings, setSettings] = useState(false),
     [admin, setAdmin] = useState(false),
     [superuser, setSuperuser] = useState(false),
+    [gallery, setGallery] = useState(false),
     [nav, setNav] = useState(false),
     [notice, setNotice] = useState(''),
     [online, setOnline] = useState(true),
@@ -845,6 +851,7 @@ function App() {
         <button className="new-chat" onClick={newChat}>
           <Plus size={19} /> Neues Gespräch
         </button>
+        <button className="quiet archive-filter" onClick={() => setGallery(true)}>Bildgalerie</button>
         <label className="search">
           <Search size={17} />
           <input
@@ -1187,6 +1194,7 @@ function App() {
       {settings && <Preferences close={() => setSettings(false)} onLogout={refreshAuth} isAdmin={['admin', 'superuser'].includes(auth.user?.role)} isSuperuser={auth.user?.role === 'superuser'} openAdmin={() => { setSettings(false); setAdmin(true); }} openSuperuser={() => { setSettings(false); setSuperuser(true); }} />}{' '}
       {admin && <AdminPanel close={() => setAdmin(false)} isSuperuser={auth.user?.role === 'superuser'} />}
       {superuser && <SuperuserPanel close={() => setSuperuser(false)} openChat={(chatId) => { setSelected(chatId); setSuperuser(false); }} />}
+      {gallery && <GalleryPanel close={() => setGallery(false)} openChat={(chatId) => { setSelected(chatId); setGallery(false); }} />}
       {zoom && (
         <Modal title="Bildansicht" close={() => setZoom(null)}>
           <img className="zoom-image" src={'/api/files/' + zoom} alt="Vergrößertes Bild" />

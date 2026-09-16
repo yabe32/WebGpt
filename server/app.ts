@@ -337,6 +337,17 @@ export function createApp(cfg: Config, rpc: Rpc) {
     res.json({ ok: true });
   });
   app.get('/api/tags', (req, res) => res.json(store.all('SELECT * FROM tags WHERE user_id=? ORDER BY name COLLATE NOCASE', res.locals.session.user_id)));
+  app.get('/api/gallery', (req, res) => {
+    const projectId = req.query.projectId ? id.parse(req.query.projectId) : null;
+    const params: any[] = [res.locals.session.user_id];
+    const filter = projectId ? 'AND c.project_id=?' : '';
+    if (projectId) params.push(projectId);
+    res.json(store.all(
+      `SELECT DISTINCT a.id,a.created_at,c.id chat_id,c.title FROM artifacts a
+       JOIN messages m ON EXISTS (SELECT 1 FROM json_each(m.attachments) j WHERE j.value=a.id)
+       JOIN chats c ON c.id=m.chat_id WHERE a.user_id=? ${filter} ORDER BY a.created_at DESC LIMIT 300`, ...params,
+    ));
+  });
   app.post('/api/tags', (req, res) => {
     const name = z.object({ name: z.string().trim().min(1).max(40) }).parse(req.body).name;
     const existing = store.get('SELECT * FROM tags WHERE user_id=? AND name=?', res.locals.session.user_id, name);

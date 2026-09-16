@@ -944,6 +944,10 @@ dialog > p {
 .project-controls .quiet, .archive-filter { font-size: 11px; padding: 7px 8px; }
 .archive-filter { margin: 3px 0 10px; color: var(--muted); }
 .chat-link small { display: block; margin-top: 3px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+.gallery-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-height:65vh; overflow:auto; }
+.gallery-item { display:block; text-align:left; min-width:0; }
+.gallery-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+.gallery-item small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); margin-top:4px; }
 .superuser-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px 0 18px; }
 .superuser-filters select, .superuser-section input, .superuser-section textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px; color: var(--ink); background: var(--surface); }
 .superuser-section { border-top: 1px solid var(--line); padding: 16px 0; }
